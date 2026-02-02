@@ -3,11 +3,15 @@
  */
 
 const { Player } = require('./Player');
-const { checkCollisions } = require('./Collision');
+const { checkCollisions, distance } = require('./Collision');
 
-const ARENA_SIZE = { width: 800, height: 600 };
+const ARENA_SIZE = { width: 1200, height: 720 };
 const GAME_DURATION_SEC = 300; // 5 minutes
 const TICK_MS = 1000 / 60; // ~60 FPS
+const ORB_SPAWN_INTERVAL_MS = 4000;
+const ORB_SPAWN_COUNT = 4;
+const ORB_VALUES = [1, 3, 5, 10];
+const orbRadiusForValue = (value) => 6 + value * 1.2;
 
 class Game {
   /**
@@ -26,6 +30,9 @@ class Game {
     this.onTick = null; // (game) => void - set by GameManager to broadcast
     this.onTag = null;   // (game, taggerId, taggedId) => void
     this.onGameEnd = null; // (game, winner, finalScores) => void
+    this.orbs = [];
+    this.orbCount = 0;
+    this.lastOrbSpawnAt = 0;
 
     // Add host as first player
     const host = new Player(hostId, hostName, true, this.arenaSize, 0);
@@ -92,6 +99,10 @@ class Game {
     if (this.state !== 'waiting' || !this.canStart()) return false;
     this.state = 'playing';
     this.timerSec = GAME_DURATION_SEC;
+    this.orbs = [];
+    this.orbCount = 0;
+    this.lastOrbSpawnAt = Date.now();
+    this.spawnOrbs();
     this.startGameLoop();
     return true;
   }
@@ -151,6 +162,12 @@ class Game {
     const arenaSize = this.arenaSize;
     const playerList = [...this.players.values()];
 
+    // 0. Spawn orbs on interval
+    if (now - this.lastOrbSpawnAt >= ORB_SPAWN_INTERVAL_MS) {
+      this.spawnOrbs();
+      this.lastOrbSpawnAt = now;
+    }
+
     // 1. Update positions
     for (const p of playerList) {
       p.updatePosition(arenaSize);
@@ -163,9 +180,19 @@ class Game {
       const tagged = this.players.get(taggedId);
       if (tagger && tagged) {
         tagger.recordTag(now);
+        if (tagger.score > tagged.score) {
+          const transfer = Math.min(1, tagged.score);
+          if (transfer > 0) {
+            tagger.addScore(transfer);
+            tagged.addScore(-transfer);
+          }
+        }
         if (this.onTag) this.onTag(this, taggerId, taggedId);
       }
     }
+
+    // 2.5 Orb collection
+    this.resolveOrbCollisions(playerList);
 
     // 3. Timer
     this.timerSec -= TICK_MS / 1000;
@@ -181,9 +208,59 @@ class Game {
   destroy() {
     this.stopGameLoop();
     this.players.clear();
+    this.orbs = [];
     this.onTick = null;
     this.onTag = null;
     this.onGameEnd = null;
+  }
+
+  getOrbsList() {
+    return this.orbs.map(orb => ({
+      id: orb.id,
+      value: orb.value,
+      radius: orb.radius,
+      position: { ...orb.position }
+    }));
+  }
+
+  spawnOrbs() {
+    const padding = Player.PLAYER_RADIUS + 12;
+    for (let i = 0; i < ORB_SPAWN_COUNT; i++) {
+      const value = ORB_VALUES[Math.floor(Math.random() * ORB_VALUES.length)];
+      const radius = orbRadiusForValue(value);
+      const minX = padding + radius;
+      const maxX = Math.max(minX, this.arenaSize.width - padding - radius);
+      const minY = padding + radius;
+      const maxY = Math.max(minY, this.arenaSize.height - padding - radius);
+      this.orbCount += 1;
+      this.orbs.push({
+        id: `orb-${this.orbCount}`,
+        value,
+        radius,
+        position: {
+          x: minX + Math.random() * (maxX - minX),
+          y: minY + Math.random() * (maxY - minY)
+        }
+      });
+    }
+  }
+
+  resolveOrbCollisions(playerList) {
+    if (!this.orbs.length) return;
+    const remaining = [];
+    for (const orb of this.orbs) {
+      let collected = false;
+      for (const player of playerList) {
+        const dist = distance(player.position.x, player.position.y, orb.position.x, orb.position.y);
+        if (dist <= Player.PLAYER_RADIUS + orb.radius) {
+          player.addScore(orb.value);
+          collected = true;
+          break;
+        }
+      }
+      if (!collected) remaining.push(orb);
+    }
+    this.orbs = remaining;
   }
 }
 

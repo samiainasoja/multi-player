@@ -153,6 +153,14 @@ body {
   overflow: hidden;
 }
 
+.arena__field {
+  position: absolute;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(102, 255, 251, 0.35);
+  box-shadow: 0 0 18px rgba(39, 246, 255, 0.2);
+  overflow: hidden;
+}
+
 .arena__grid {
   position: absolute;
   inset: 0;
@@ -167,15 +175,16 @@ body {
       transparent 1px
     );
   background-size: 120px 120px;
+  background-position: 0 0;
   animation: drift 26s linear infinite;
 }
 
 @keyframes drift {
   from {
-    transform: translateY(0);
+    background-position: 0 0;
   }
   to {
-    transform: translateY(120px);
+    background-position: 0 120px;
   }
 }
 
@@ -364,6 +373,7 @@ body {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(8px);
+  touch-action: none;
 }
 
 .touch-stick.is-visible {
@@ -390,6 +400,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   display: none;
+  touch-action: none;
 }
 
 .touch-dash.is-visible {

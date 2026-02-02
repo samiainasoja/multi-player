@@ -1,6 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 
 const arenaEl = $("#arena");
+const arenaFieldEl = $("#arenaField");
 const timerLabel = $("#timerLabel");
 const streakLabel = $("#streakLabel");
 const leaderboardEl = $("#leaderboard");
@@ -23,6 +24,9 @@ const touchStickEl = $("#touchStick");
 const touchDashBtn = $("#touchDash");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
+let VIEWPORT_SIZE = { width: 0, height: 0 };
+let ARENA_SCALE = 1;
+let ARENA_OFFSET = { x: 0, y: 0 };
 const PLAYER_SPEED = 396;
 const DASH_SCALE = 1.55;
 const MATCH_SECONDS = 5 * 60;
@@ -75,8 +79,22 @@ const syncArenaSize = () => {
   if (!arenaEl) return;
   const width = Math.max(200, Math.floor(arenaEl.clientWidth));
   const height = Math.max(200, Math.floor(arenaEl.clientHeight));
-  if (width && height) {
-    ARENA_SIZE = { width, height };
+  if (!width || !height) return;
+  VIEWPORT_SIZE = { width, height };
+  const scale = Math.min(
+    VIEWPORT_SIZE.width / ARENA_SIZE.width,
+    VIEWPORT_SIZE.height / ARENA_SIZE.height
+  );
+  ARENA_SCALE = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  ARENA_OFFSET = {
+    x: (VIEWPORT_SIZE.width - ARENA_SIZE.width * ARENA_SCALE) / 2,
+    y: (VIEWPORT_SIZE.height - ARENA_SIZE.height * ARENA_SCALE) / 2,
+  };
+  if (arenaFieldEl) {
+    arenaFieldEl.style.width = `${ARENA_SIZE.width * ARENA_SCALE}px`;
+    arenaFieldEl.style.height = `${ARENA_SIZE.height * ARENA_SCALE}px`;
+    arenaFieldEl.style.left = `${ARENA_OFFSET.x}px`;
+    arenaFieldEl.style.top = `${ARENA_OFFSET.y}px`;
   }
 };
 const formatClock = (totalSeconds) => {
@@ -343,8 +361,13 @@ class ArenaRenderer {
       const badge = el.querySelector(".player-node__badge");
       if (initials) initials.textContent = player.name[0]?.toUpperCase() ?? "?";
       if (badge) badge.textContent = player.score.toString();
-      const tx = player.position.x - PLAYER_RADIUS - this.camera.x;
-      const ty = player.position.y - PLAYER_RADIUS - this.camera.y;
+      const size = PLAYER_RADIUS * 2 * ARENA_SCALE;
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      const tx =
+        (player.position.x - PLAYER_RADIUS) * ARENA_SCALE - this.camera.x;
+      const ty =
+        (player.position.y - PLAYER_RADIUS) * ARENA_SCALE - this.camera.y;
       el.style.transform = `translate(${tx}px, ${ty}px)`;
     });
 
@@ -355,32 +378,8 @@ class ArenaRenderer {
       }
     });
 
-    const localPlayer = players.find((player) => player.id === localId);
-    if (localPlayer) {
-      const margin = 180;
-      const maxX = Math.max(0, ARENA_SIZE.width - this.parent.clientWidth);
-      const maxY = Math.max(0, ARENA_SIZE.height - this.parent.clientHeight);
-      if (maxX === 0) {
-        this.camera.x = 0;
-      } else {
-        this.camera.x = clamp(
-          localPlayer.position.x - this.parent.clientWidth / 2,
-          -margin,
-          maxX + margin
-        );
-      }
-      if (maxY === 0) {
-        this.camera.y = 0;
-      } else {
-        this.camera.y = clamp(
-          localPlayer.position.y - this.parent.clientHeight / 2,
-          -margin,
-          maxY + margin
-        );
-      }
-      this.parent.style.setProperty("--camera-x", `${this.camera.x}px`);
-      this.parent.style.setProperty("--camera-y", `${this.camera.y}px`);
-    }
+    this.camera.x = 0;
+    this.camera.y = 0;
   }
 
   resetCamera() {
@@ -399,11 +398,13 @@ class ArenaRenderer {
         this.orbNodes.set(orb.id, node);
       }
       const el = this.orbNodes.get(orb.id);
-      const size = orb.radius * 2;
+      const size = orb.radius * 2 * ARENA_SCALE;
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
-      const tx = orb.position.x - orb.radius - this.camera.x;
-      const ty = orb.position.y - orb.radius - this.camera.y;
+      const tx =
+        (orb.position.x - orb.radius) * ARENA_SCALE - this.camera.x;
+      const ty =
+        (orb.position.y - orb.radius) * ARENA_SCALE - this.camera.y;
       el.style.transform = `translate(${tx}px, ${ty}px)`;
     });
 
@@ -705,9 +706,10 @@ class SandboxEngine {
 
 class InterfaceController {
   constructor() {
-    this.renderer = new ArenaRenderer(arenaEl);
+    this.renderer = new ArenaRenderer(arenaFieldEl || arenaEl);
     this.audio = new AudioKit();
     this.sandbox = null;
+    this.socket = null;
     this.streak = 0;
     this.activePlayers = [];
     this.timer = MATCH_SECONDS;
@@ -722,6 +724,10 @@ class InterfaceController {
       : false;
     this.localId = null;
     this.tagTicker = null;
+    this.isHost = false;
+    this.input = new InputController();
+    this.input.attach();
+    this.inputLoop = null;
   }
 
   bootstrap() {
@@ -737,7 +743,7 @@ class InterfaceController {
       event.preventDefault();
       this.audio.prime();
       syncArenaSize();
-      this.#enterSandbox(playerNameInput.value.trim() || "Pilot");
+      this.#joinRoom();
     });
 
     devModeBtn.addEventListener("click", () => {
@@ -749,16 +755,24 @@ class InterfaceController {
     });
 
     startMatchBtn.addEventListener("click", () => {
-      this.status = "running";
-      overlayEl.hidden = true;
-      startMatchBtn.disabled = true;
-      requestAnimationFrame(() => syncArenaSize());
+      if (this.sandbox) {
+        this.status = "running";
+        overlayEl.hidden = true;
+        startMatchBtn.disabled = true;
+        requestAnimationFrame(() => syncArenaSize());
+        return;
+      }
+      if (!this.socket || !this.isHost) return;
+      this.socket.emit("game-action", { action: "start" });
     });
 
     pauseToggleBtn.addEventListener("click", () => {
       const pressed = pauseToggleBtn.getAttribute("aria-pressed") === "true";
       pauseToggleBtn.setAttribute("aria-pressed", String(!pressed));
       pauseToggleBtn.textContent = pressed ? "Pause" : "Resume";
+      if (!this.socket) return;
+      const action = pressed ? "resume" : "pause";
+      this.socket.emit("game-action", { action });
     });
 
     resetViewBtn.addEventListener("click", () => this.renderer.resetCamera());
@@ -783,6 +797,32 @@ class InterfaceController {
     }
   }
 
+  #connectSocket() {
+    if (this.socket) return this.socket;
+    if (typeof io === "undefined") {
+      this.#toast("Socket.io not available");
+      return null;
+    }
+    this.socket = io();
+    this.socket.on("room-joined", (payload) => this.#handleRoomJoined(payload));
+    this.socket.on("room-update", (payload) => this.#handleRoomUpdate(payload));
+    this.socket.on("game-update", (payload) => this.#handleGameUpdate(payload));
+    this.socket.on("tag-event", (payload) => this.#handleSocketTag(payload));
+    this.socket.on("game-state", (payload) => this.#handleGameState(payload));
+    this.socket.on("game-ended", (payload) => this.#handleGameEnded(payload));
+    return this.socket;
+  }
+
+  #joinRoom() {
+    const socket = this.#connectSocket();
+    if (!socket) return;
+    const playerName = playerNameInput.value.trim() || "Pilot";
+    const roomCode = roomInput.value.trim() || undefined;
+    socket.emit("join-room", { playerName, roomCode }, (err) => {
+      if (err?.message) this.#toast(err.message);
+    });
+  }
+
   #enterSandbox(name) {
     syncArenaSize();
     startMatchBtn.disabled = false;
@@ -803,6 +843,79 @@ class InterfaceController {
       this.netShim.dispatch((evt) => this.#handleLobbyEvent(evt), payload)
     );
     this.sandbox.start(name);
+  }
+
+  #handleRoomJoined({ roomCode, playerId, isHost, arenaSize, players, orbs, state }) {
+    this.localId = playerId;
+    this.isHost = Boolean(isHost);
+    if (arenaSize?.width && arenaSize?.height) {
+      ARENA_SIZE = { width: arenaSize.width, height: arenaSize.height };
+    }
+    syncArenaSize();
+    roomInput.value = roomCode || "";
+    startMatchBtn.disabled = !this.isHost;
+    startMatchBtn.textContent = this.isHost ? "Start Match" : "Waiting for host";
+    overlayEl.hidden = state === "playing";
+    this.touchStick.setInput(this.input);
+    this.#startInputLoop();
+    this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
+  }
+
+  #handleRoomUpdate({ players, orbs, state }) {
+    this.status = state || this.status;
+    if (state === "playing") overlayEl.hidden = true;
+    this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
+  }
+
+  #handleGameUpdate({ players, orbs, timer, state }) {
+    this.status = state || this.status;
+    if (state === "playing") overlayEl.hidden = true;
+    if (state === "paused") {
+      pauseToggleBtn.setAttribute("aria-pressed", "true");
+      pauseToggleBtn.textContent = "Resume";
+    } else {
+      pauseToggleBtn.setAttribute("aria-pressed", "false");
+      pauseToggleBtn.textContent = "Pause";
+    }
+    this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer, localId: this.localId });
+  }
+
+  #handleSocketTag({ taggerId, taggedId, taggerName, taggedName, scores }) {
+    const score = scores?.[taggerId] ?? 0;
+    this.#updateTagTicker({ from: taggerName, to: taggedName, score });
+    this.#logEvent(`${taggerName} → ${taggedName}`);
+    this.audio.blip({ freq: 500 + Math.random() * 100 });
+  }
+
+  #handleGameState({ state }) {
+    if (state === "paused") {
+      pauseToggleBtn.setAttribute("aria-pressed", "true");
+      pauseToggleBtn.textContent = "Resume";
+    }
+    if (state === "playing") {
+      pauseToggleBtn.setAttribute("aria-pressed", "false");
+      pauseToggleBtn.textContent = "Pause";
+      overlayEl.hidden = true;
+    }
+    if (state === "ended") overlayEl.hidden = false;
+  }
+
+  #handleGameEnded({ winner }) {
+    if (winner?.name) this.#toast(`${winner.name} takes the round`);
+    overlayEl.hidden = false;
+    startMatchBtn.disabled = !this.isHost;
+    startMatchBtn.textContent = this.isHost ? "Restart Match" : "Waiting for host";
+  }
+
+  #startInputLoop() {
+    if (this.inputLoop) return;
+    const tick = () => {
+      if (!this.socket) return;
+      const { x, y } = this.input.vector();
+      this.socket.emit("player-move", { x, y });
+      this.inputLoop = requestAnimationFrame(tick);
+    };
+    this.inputLoop = requestAnimationFrame(tick);
   }
 
   #applyState({ players, orbs, timer, localId }) {

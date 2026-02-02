@@ -12,7 +12,7 @@ const { GameManager } = require('./managers/GameManager');
 const { Game } = require('./game/Game');
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
 const server = http.createServer(app);
@@ -65,6 +65,7 @@ io.on('connection', (socket) => {
         isHost: player.isHost,
         arenaSize: game.arenaSize,
         players: game.getPlayersList(),
+        orbs: game.getOrbsList(),
         state: game.state
       });
       gameManager.broadcastRoomUpdate(game);
@@ -85,6 +86,7 @@ io.on('connection', (socket) => {
       isHost: true,
       arenaSize: newGame.arenaSize,
       players: newGame.getPlayersList(),
+      orbs: newGame.getOrbsList(),
       state: newGame.state
     });
     callback ? callback(null, { roomCode: newRoomCode, isHost: true }) : null;
