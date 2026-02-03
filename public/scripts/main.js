@@ -3,7 +3,7 @@ const $ = (selector) => document.querySelector(selector);
 const arenaEl = $("#arena");
 const arenaFieldEl = $("#arenaField");
 const timerLabel = $("#timerLabel");
-const streakLabel = $("#streakLabel");
+const statusLabel = $("#statusLabel");
 const leaderboardEl = $("#leaderboard");
 const overlayEl = $("#overlay");
 const joinForm = $("#joinForm");
@@ -17,11 +17,16 @@ const devModeBtn = $("#devMode");
 const messagesEl = $("#arenaMessages");
 const eventFeedEl = $("#eventFeed");
 const miniMapCanvas = $("#miniMap");
-const latencyRange = $("#latencyRange");
-const latencyLabel = $("#latencyLabel");
 const motionToggle = $("#motionToggle");
 const touchStickEl = $("#touchStick");
 const touchDashBtn = $("#touchDash");
+const roomDisplay = $("#roomDisplay");
+const playerCount = $("#playerCount");
+const playerList = $("#playerList");
+const pauseOverlay = $("#pauseOverlay");
+const pausedByLabel = $("#pausedBy");
+const resumeBtn = $("#resumeBtn");
+const quitMatchBtn = $("#quitMatch");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
@@ -124,6 +129,13 @@ class InputController {
   #handle(event, isDown) {
     const action = KEY_MAP[event.code];
     if (!action) return;
+    const target = event.target;
+    const isTypingTarget =
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable);
+    if (isTypingTarget) return;
     event.preventDefault();
     if (isDown) this.keys.add(action);
     else this.keys.delete(action);
@@ -223,26 +235,6 @@ class MiniMapRenderer {
         this.ctx.stroke();
       }
     });
-  }
-}
-
-// BACKEND: DELETE - latency shim is only for sandbox testing.
-class LatencyShim {
-  constructor() {
-    this.delayMs = 0;
-  }
-
-  setDelay(value) {
-    this.delayMs = Math.max(0, value);
-  }
-
-  dispatch(callback, payload) {
-    if (!this.delayMs) {
-      callback(payload);
-      return;
-    }
-    const jitter = this.delayMs * (0.4 + Math.random() * 0.8);
-    setTimeout(() => callback(payload), jitter);
   }
 }
 
@@ -716,8 +708,7 @@ class InterfaceController {
     this.status = "idle";
     this.feed = new EventFeed(eventFeedEl);
     this.miniMap = new MiniMapRenderer(miniMapCanvas);
-    // BACKEND: DELETE - latency shim is client-only testing.
-    this.netShim = new LatencyShim();
+    this.netShim = null;
     this.touchStick = new TouchStick(touchStickEl, touchDashBtn);
     this.prefersCoarse = window.matchMedia
       ? window.matchMedia("(pointer: coarse)").matches
@@ -775,18 +766,28 @@ class InterfaceController {
       this.socket.emit("game-action", { action });
     });
 
+    resumeBtn?.addEventListener("click", () => {
+      if (!this.socket) return;
+      this.socket.emit("game-action", { action: "resume" });
+    });
+
+    quitMatchBtn?.addEventListener("click", () => {
+      if (!this.socket) return;
+      this.socket.emit("leave-game");
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!this.socket) return;
+      const pressed = pauseToggleBtn.getAttribute("aria-pressed") === "true";
+      const action = pressed ? "resume" : "pause";
+      this.socket.emit("game-action", { action });
+    });
+
     resetViewBtn.addEventListener("click", () => this.renderer.resetCamera());
     leaveMatchBtn.addEventListener("click", () => window.location.reload());
 
     // BACKEND: DELETE - latency slider is only for sandbox testing.
-    if (latencyRange && latencyLabel) {
-      latencyRange.addEventListener("input", () => {
-        const value = Number(latencyRange.value);
-        latencyLabel.textContent = `${value} ms`;
-        this.netShim.setDelay(value);
-      });
-      latencyRange.dispatchEvent(new Event("input"));
-    }
 
     motionToggle?.addEventListener("change", () => {
       document.body.classList.toggle("reduced-motion", motionToggle.checked);
@@ -810,6 +811,12 @@ class InterfaceController {
     this.socket.on("tag-event", (payload) => this.#handleSocketTag(payload));
     this.socket.on("game-state", (payload) => this.#handleGameState(payload));
     this.socket.on("game-ended", (payload) => this.#handleGameEnded(payload));
+    this.socket.on("system-message", (payload) => {
+      if (payload?.message) this.#logEvent(payload.message);
+    });
+    this.socket.on("left-room", () => {
+      window.location.reload();
+    });
     return this.socket;
   }
 
@@ -832,16 +839,10 @@ class InterfaceController {
     this.sandbox = new SandboxEngine(this.renderer, this.audio);
     this.touchStick.setInput(this.sandbox.input);
     // BACKEND: DELETE - sandbox events will be replaced by socket events.
-    this.sandbox.on("state", (state) =>
-      this.netShim.dispatch((payload) => this.#applyState(payload), state)
-    );
-    this.sandbox.on("tag", (data) =>
-      this.netShim.dispatch((payload) => this.#handleTag(payload), data)
-    );
+    this.sandbox.on("state", (state) => this.#applyState(state));
+    this.sandbox.on("tag", (data) => this.#handleTag(data));
     this.sandbox.on("match-end", ({ players }) => this.#handleMatchEnd(players));
-    this.sandbox.on("lobby", (payload) =>
-      this.netShim.dispatch((evt) => this.#handleLobbyEvent(evt), payload)
-    );
+    this.sandbox.on("lobby", (payload) => this.#handleLobbyEvent(payload));
     this.sandbox.start(name);
   }
 
@@ -853,18 +854,23 @@ class InterfaceController {
     }
     syncArenaSize();
     roomInput.value = roomCode || "";
+    if (roomDisplay) roomDisplay.textContent = roomCode || "—";
     startMatchBtn.disabled = !this.isHost;
     startMatchBtn.textContent = this.isHost ? "Start Match" : "Waiting for host";
     overlayEl.hidden = state === "playing";
+    if (pauseOverlay) pauseOverlay.hidden = true;
     this.touchStick.setInput(this.input);
     this.#startInputLoop();
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
+    this.#updateLobbyList(players ?? []);
   }
 
   #handleRoomUpdate({ players, orbs, state }) {
     this.status = state || this.status;
     if (state === "playing") overlayEl.hidden = true;
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
+    this.#updateLobbyList(players ?? []);
+    if (statusLabel) statusLabel.textContent = this.#statusText();
   }
 
   #handleGameUpdate({ players, orbs, timer, state }) {
@@ -877,7 +883,10 @@ class InterfaceController {
       pauseToggleBtn.setAttribute("aria-pressed", "false");
       pauseToggleBtn.textContent = "Pause";
     }
+    if (pauseOverlay && state !== "paused") pauseOverlay.hidden = true;
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer, localId: this.localId });
+    this.#updateLobbyList(players ?? []);
+    if (statusLabel) statusLabel.textContent = this.#statusText();
   }
 
   #handleSocketTag({ taggerId, taggedId, taggerName, taggedName, scores }) {
@@ -887,17 +896,27 @@ class InterfaceController {
     this.audio.blip({ freq: 500 + Math.random() * 100 });
   }
 
-  #handleGameState({ state }) {
+  #handleGameState({ state, actionBy }) {
     if (state === "paused") {
       pauseToggleBtn.setAttribute("aria-pressed", "true");
       pauseToggleBtn.textContent = "Resume";
+      if (pauseOverlay) {
+        pauseOverlay.hidden = false;
+        const name = this.#getPlayerName(actionBy);
+        if (pausedByLabel) {
+          pausedByLabel.textContent = name ? `Paused by ${name}` : "Paused";
+        }
+        if (resumeBtn) resumeBtn.disabled = false;
+      }
     }
     if (state === "playing") {
       pauseToggleBtn.setAttribute("aria-pressed", "false");
       pauseToggleBtn.textContent = "Pause";
       overlayEl.hidden = true;
+      if (pauseOverlay) pauseOverlay.hidden = true;
     }
     if (state === "ended") overlayEl.hidden = false;
+    if (statusLabel) statusLabel.textContent = this.#statusText(state);
   }
 
   #handleGameEnded({ winner }) {
@@ -905,6 +924,37 @@ class InterfaceController {
     overlayEl.hidden = false;
     startMatchBtn.disabled = !this.isHost;
     startMatchBtn.textContent = this.isHost ? "Restart Match" : "Waiting for host";
+    if (pauseOverlay) pauseOverlay.hidden = true;
+    this.#updateLobbyList(this.activePlayers);
+    if (statusLabel) statusLabel.textContent = this.#statusText("ended");
+  }
+
+  #statusText(nextState) {
+    const state = nextState || this.status;
+    if (state === "playing") return "Live";
+    if (state === "paused") return "Paused";
+    if (state === "ended") return "Ended";
+    return "Waiting";
+  }
+
+  #getPlayerName(id) {
+    if (!id) return "";
+    return this.activePlayers.find((player) => player.id === id)?.name || "";
+  }
+
+  #updateLobbyList(players) {
+    if (!playerList) return;
+    playerList.innerHTML = "";
+    if (playerCount) playerCount.textContent = `${players.length}/4`;
+    players.forEach((player) => {
+      const row = document.createElement("li");
+      row.textContent = player.name;
+      const badge = document.createElement("span");
+      badge.textContent = player.isHost ? "Host" : "Player";
+      row.appendChild(badge);
+      if (player.id === this.localId) row.style.color = "var(--ink-strong)";
+      playerList.appendChild(row);
+    });
   }
 
   #startInputLoop() {
@@ -930,7 +980,9 @@ class InterfaceController {
     const localPlayer = players.find((player) => player.id === localId);
     const streakValue = localPlayer?.streak ?? 0;
     this.streak = streakValue;
-    streakLabel.textContent = streakValue.toString();
+    if (statusLabel) {
+      statusLabel.textContent = this.#statusText();
+    }
   }
 
   #updateLeaderboard(players) {

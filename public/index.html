@@ -21,8 +21,8 @@
           <p class="hud__value" id="timerLabel">05:00</p>
         </section>
         <section class="hud__block">
-          <p class="hud__label">Tag Streak</p>
-          <p class="hud__value" id="streakLabel">0</p>
+          <p class="hud__label">Match Status</p>
+          <p class="hud__value" id="statusLabel">Waiting</p>
         </section>
         <section class="hud__block hud__block--score">
           <p class="hud__label">Leaderboard</p>
@@ -34,18 +34,6 @@
             <button id="pauseToggle" class="pill-btn" aria-pressed="false">
               Pause
             </button>
-            <label class="control-range">
-              <span>Latency Sim</span>
-              <input
-                type="range"
-                id="latencyRange"
-                min="0"
-                max="260"
-                step="20"
-                value="0"
-              />
-              <output id="latencyLabel">0 ms</output>
-            </label>
             <label class="control-toggle">
               <input type="checkbox" id="motionToggle" />
               <span>Reduce Motion</span>
@@ -102,6 +90,17 @@
           <h1>Flux Tag Arena</h1>
           <p>Fast-paced chase, simple rules, pure chaos.</p>
         </div>
+        <div class="overlay__stats">
+          <div class="overlay__stat">
+            <span>Room</span>
+            <strong id="roomDisplay">—</strong>
+          </div>
+          <div class="overlay__stat">
+            <span>Players</span>
+            <strong id="playerCount">0/4</strong>
+          </div>
+        </div>
+        <ul class="overlay__players" id="playerList"></ul>
         <form id="joinForm" class="overlay__form">
           <label class="field">
             <span>Player Handle</span>
@@ -141,6 +140,19 @@
             give +1. Highest score when the buzzer hits wins.
           </p>
           <button id="startMatch" class="pill-btn" disabled>Start Match</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="overlay overlay--pause" id="pauseOverlay" aria-modal="true" role="dialog" hidden>
+      <div class="overlay__panel">
+        <div class="overlay__header">
+          <h1>Game Paused</h1>
+          <p id="pausedBy">Paused by —</p>
+        </div>
+        <div class="overlay__footer">
+          <button id="resumeBtn" class="pill-btn">Resume Match</button>
+          <button id="quitMatch" class="ghost-btn ghost-btn--danger">Quit Match</button>
         </div>
       </div>
     </section>

@@ -409,11 +409,29 @@ body {
 
 body.reduced-motion .arena__grid,
 body.reduced-motion .player-node[data-tag-state="it"],
-body.reduced-motion .tag-toast {
+body.reduced-motion .tag-toast,
+body.reduced-motion .tag-ticker--flash {
   animation: none !important;
 }
 
+body.reduced-motion .player-node {
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+body.reduced-motion .scene-texture,
+body.reduced-motion .hud__block,
+body.reduced-motion .cta-bar,
+body.reduced-motion .overlay__panel,
+body.reduced-motion .touch-stick {
+  backdrop-filter: none !important;
+}
+
 body.reduced-motion .touch-stick__knob {
+  transition: none;
+}
+
+body.reduced-motion .event-feed li {
   transition: none;
 }
 
@@ -494,6 +512,68 @@ button {
   flex-direction: column;
   gap: 1.5rem;
   box-shadow: 0 30px 120px rgba(0, 0, 0, 0.7);
+}
+
+.overlay--pause .overlay__panel {
+  width: min(420px, 100%);
+  text-align: center;
+}
+
+.overlay--pause .overlay__footer {
+  align-items: center;
+}
+
+.overlay__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.overlay__stat {
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 215, 255, 0.18);
+  background: rgba(2, 10, 22, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.overlay__stat strong {
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-strong);
+}
+
+.overlay__players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.overlay__players li {
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(0, 215, 255, 0.16);
+  background: rgba(2, 10, 22, 0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.overlay__players li span {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.65rem;
+  color: rgba(39, 246, 255, 0.7);
 }
 
 .overlay__header h1 {
