@@ -12,7 +12,8 @@ const { GameManager } = require('./managers/GameManager');
 const { Game } = require('./game/Game');
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC_DIR = path.join(__dirname, 'public');
+// Serve merged frontend from workspace public/ (sibling to backend/)
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
 const server = http.createServer(app);

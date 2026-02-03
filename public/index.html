@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flux Tag Arena</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/main.css" />
+  </head>
+  <body>
+    <div class="scene-texture" aria-hidden="true"></div>
+    <main id="app">
+      <header class="hud">
+        <section class="hud__block">
+          <p class="hud__label">Match Timer</p>
+          <p class="hud__value" id="timerLabel">05:00</p>
+        </section>
+        <section class="hud__block">
+          <p class="hud__label">Match Status</p>
+          <p class="hud__value" id="statusLabel">Waiting</p>
+        </section>
+        <section class="hud__block hud__block--score">
+          <p class="hud__label">Leaderboard</p>
+          <ol id="leaderboard" class="hud__leaderboard"></ol>
+        </section>
+        <section class="hud__block hud__block--control">
+          <p class="hud__label">Session Control</p>
+          <div class="control-stack">
+            <button id="pauseToggle" class="pill-btn" aria-pressed="false">
+              Pause
+            </button>
+            <label class="control-toggle">
+              <input type="checkbox" id="motionToggle" />
+              <span>Reduce Motion</span>
+            </label>
+          </div>
+        </section>
+      </header>
+
+      <section class="arena" id="arena" aria-live="polite">
+        <div class="arena__field" id="arenaField" aria-hidden="true">
+          <div class="arena__grid" aria-hidden="true"></div>
+        </div>
+        <div class="arena__messages" id="arenaMessages"></div>
+        <canvas
+          id="miniMap"
+          class="mini-map"
+          width="160"
+          height="160"
+          aria-hidden="true"
+        ></canvas>
+        <ul class="event-feed" id="eventFeed" aria-live="polite"></ul>
+      </section>
+
+      <footer class="cta-bar">
+        <div>
+          <p class="cta-bar__hint">WASD or Arrow keys to move</p>
+          <p class="cta-bar__hint">Shift for burst dash</p>
+          <p class="cta-bar__hint">Drag stick on touch devices</p>
+        </div>
+        <div class="cta-bar__actions">
+          <button id="resetView" class="ghost-btn">Center Camera</button>
+          <button id="leaveMatch" class="ghost-btn ghost-btn--danger">
+            Leave Match
+          </button>
+        </div>
+      </footer>
+    </main>
+
+    <div class="touch-stick" id="touchStick" aria-hidden="true">
+      <div class="touch-stick__knob"></div>
+    </div>
+    <button
+      class="touch-dash"
+      id="touchDash"
+      aria-hidden="true"
+      type="button"
+    >
+      Dash
+    </button>
+
+    <section class="overlay" id="overlay" aria-modal="true" role="dialog">
+      <div class="overlay__panel">
+        <div class="overlay__header">
+          <h1>Flux Tag Arena</h1>
+          <p>Fast-paced chase, simple rules, pure chaos.</p>
+        </div>
+        <div class="overlay__stats">
+          <div class="overlay__stat">
+            <span>Room</span>
+            <strong id="roomDisplay">—</strong>
+          </div>
+          <div class="overlay__stat">
+            <span>Players</span>
+            <strong id="playerCount">0/4</strong>
+          </div>
+        </div>
+        <ul class="overlay__players" id="playerList"></ul>
+        <form id="joinForm" class="overlay__form">
+          <label class="field">
+            <span>Player Handle</span>
+            <input
+              type="text"
+              id="playerName"
+              name="playerName"
+              maxlength="12"
+              autocomplete="off"
+              placeholder="e.g. Nova"
+              required
+            />
+          </label>
+          <label class="field">
+            <span>Room Code</span>
+            <div class="field__row">
+              <input
+                type="text"
+                id="roomCode"
+                name="roomCode"
+                maxlength="6"
+                autocomplete="off"
+                placeholder="Auto"
+              />
+              <button type="button" id="copyRoom" class="ghost-btn">
+                Copy
+              </button>
+            </div>
+          </label>
+          <div class="overlay__actions">
+            <button type="submit" class="pill-btn pill-btn--glow">
+              Join Lobby
+            </button>
+            <button type="button" id="devMode" class="ghost-btn">
+              Sandbox Mode
+            </button>
+          </div>
+        </form>
+        <div class="overlay__footer">
+          <p>
+            Lobby leader can start, pause, or end the match for everyone. Tags
+            give +1. Highest score when the buzzer hits wins.
+          </p>
+          <button id="startMatch" class="pill-btn" disabled>Start Match</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="overlay overlay--pause" id="pauseOverlay" aria-modal="true" role="dialog" hidden>
+      <div class="overlay__panel">
+        <div class="overlay__header">
+          <h1>Game Paused</h1>
+          <p id="pausedBy">Paused by —</p>
+        </div>
+        <div class="overlay__footer">
+          <button id="resumeBtn" class="pill-btn">Resume Match</button>
+          <button id="quitMatch" class="ghost-btn ghost-btn--danger">Quit Match</button>
+        </div>
+      </div>
+    </section>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" defer></script>
+    <script src="scripts/main.js" type="module" defer></script>
+  </body>
+</html>
