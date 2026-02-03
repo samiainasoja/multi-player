@@ -116,14 +116,19 @@
           </label>
           <label class="field">
             <span>Room Code</span>
-            <input
-              type="text"
-              id="roomCode"
-              name="roomCode"
-              maxlength="6"
-              autocomplete="off"
-              placeholder="Auto"
-            />
+            <div class="field__row">
+              <input
+                type="text"
+                id="roomCode"
+                name="roomCode"
+                maxlength="6"
+                autocomplete="off"
+                placeholder="Auto"
+              />
+              <button type="button" id="copyRoom" class="ghost-btn">
+                Copy
+              </button>
+            </div>
           </label>
           <div class="overlay__actions">
             <button type="submit" class="pill-btn pill-btn--glow">

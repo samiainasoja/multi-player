@@ -27,6 +27,7 @@ const pauseOverlay = $("#pauseOverlay");
 const pausedByLabel = $("#pausedBy");
 const resumeBtn = $("#resumeBtn");
 const quitMatchBtn = $("#quitMatch");
+const copyRoomBtn = $("#copyRoom");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
@@ -786,6 +787,18 @@ class InterfaceController {
 
     resetViewBtn.addEventListener("click", () => this.renderer.resetCamera());
     leaveMatchBtn.addEventListener("click", () => window.location.reload());
+
+    copyRoomBtn?.addEventListener("click", async () => {
+      const code = roomInput.value.trim();
+      if (!code) return;
+      try {
+        await navigator.clipboard.writeText(code);
+        this.#toast("Room code copied");
+      } catch {
+        this.#toast("Copy failed");
+      }
+    });
+
 
     // BACKEND: DELETE - latency slider is only for sandbox testing.
 

@@ -611,6 +611,19 @@ button {
   font-size: 1rem;
 }
 
+
+.field__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.field__row .ghost-btn {
+  padding: 0.55rem 0.9rem;
+  font-size: 0.7rem;
+}
+
 .overlay__actions {
   display: flex;
   gap: 0.75rem;
