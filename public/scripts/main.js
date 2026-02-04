@@ -13,7 +13,6 @@ const startMatchBtn = $("#startMatch");
 const pauseToggleBtn = $("#pauseToggle");
 const leaveMatchBtn = $("#leaveMatch");
 const resetViewBtn = $("#resetView");
-const devModeBtn = $("#devMode");
 const messagesEl = $("#arenaMessages");
 const eventFeedEl = $("#eventFeed");
 const miniMapCanvas = $("#miniMap");
@@ -37,12 +36,6 @@ const PLAYER_SPEED = 396;
 const DASH_SCALE = 1.55;
 const MATCH_SECONDS = 5 * 60;
 const PLAYER_RADIUS = 27;
-// BACKEND: MOVE - orb spawn pacing belongs to the server for authoritative sync.
-const ORB_SPAWN_INTERVAL = 4000;
-// BACKEND: MOVE - orb spawn count belongs to the server for authoritative sync.
-const ORB_SPAWN_COUNT = 4;
-// BACKEND: MOVE - orb values should be owned by server game rules.
-const ORB_VALUES = [1, 3, 5, 10];
 
 const KEY_MAP = {
   KeyW: "up",
@@ -66,21 +59,9 @@ const COLORS = [
   "#F5F7A6",
 ];
 
-// BACKEND: DELETE - bot names are only for sandbox simulation.
-const BOT_NAMES = [
-  "Rogue",
-  "Helix",
-  "Nyx",
-  "Mako",
-  "Pulse",
-  "Nova",
-  "Quill",
-  "Flux",
-];
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-// BACKEND: MOVE - orb sizing rules should align with server-defined values.
-const orbRadiusForValue = (value) => 6 + value * 1.2;
+const lerp = (a, b, t) => a + (b - a) * t;
 const syncArenaSize = () => {
   if (!arenaEl) return;
   const width = Math.max(200, Math.floor(arenaEl.clientWidth));
@@ -411,297 +392,10 @@ class ArenaRenderer {
 }
 
 // BACKEND: DELETE - SandboxEngine is client-only simulation.
-class SandboxEngine {
-  constructor(renderer, audio) {
-    this.renderer = renderer;
-    this.audio = audio;
-    this.players = [];
-    this.orbs = [];
-    this.localId = "local";
-    this.timer = MATCH_SECONDS;
-    this.loop = null;
-    this.botTimer = null;
-    this.lobbyTimer = null;
-    this.orbTimer = null;
-    this.ended = false;
-    this.lastFrameTime = 0;
-    this.listeners = new Map();
-    this.input = new InputController();
-    this.input.attach();
-    this.botCount = 0;
-    this.orbCount = 0;
-    this._tickHandle = (timestamp) => this.#tick(timestamp);
-  }
-
-  start(name) {
-    this.players = [
-      this.#newPlayer(this.localId, name, true),
-      this.#newPlayer("bot-1", "Rogue", false),
-      this.#newPlayer("bot-2", "Helix", false),
-      this.#newPlayer("bot-3", "Nyx", false),
-    ];
-    this.orbs = [];
-    this.players[1].isIt = true;
-    this.timer = MATCH_SECONDS;
-    this.ended = false;
-    this.botCount = 3;
-    this.orbCount = 0;
-    this.lastFrameTime = performance.now();
-    this.loop = requestAnimationFrame(this._tickHandle);
-    // BACKEND: DELETE - bot movement simulation is client-only.
-    this.botTimer = setInterval(() => this.#moveBots(), 600);
-    // BACKEND: DELETE - lobby simulation is client-only.
-    this.lobbyTimer = setInterval(() => this.#simulateLobby(), 8000);
-    // BACKEND: MOVE - orb spawning should be server-controlled.
-    this.orbTimer = setInterval(() => this.#spawnOrbs(), ORB_SPAWN_INTERVAL);
-    // BACKEND: MOVE - orb spawning should be server-controlled.
-    this.#spawnOrbs();
-    this.#emit("state", this.#snapshot());
-  }
-
-  stop() {
-    cancelAnimationFrame(this.loop);
-    clearInterval(this.botTimer);
-    clearInterval(this.lobbyTimer);
-    clearInterval(this.orbTimer);
-    this.players = [];
-    this.orbs = [];
-    this.ended = true;
-  }
-
-  on(event, handler) {
-    const list = this.listeners.get(event) ?? [];
-    list.push(handler);
-    this.listeners.set(event, list);
-  }
-
-  emitMove() {
-    /* sandbox keeps movement client-side */
-  }
-
-  #emit(event, payload) {
-    (this.listeners.get(event) ?? []).forEach((fn) => fn(payload));
-  }
-
-  #tick(timestamp) {
-    syncArenaSize();
-    const now = Number.isFinite(timestamp) ? timestamp : performance.now();
-    const deltaMs = Math.min(50, Math.max(0, now - this.lastFrameTime));
-    const dt = deltaMs / 1000;
-    this.lastFrameTime = now;
-    this.#stepLocal(dt);
-    this.#resolveTags();
-    this.#resolveOrbs();
-    this.#updateTimer(dt);
-    this.#emit("state", this.#snapshot());
-    if (!this.ended) this.loop = requestAnimationFrame(this._tickHandle);
-  }
-
-  #stepLocal(dt) {
-    const player = this.players.find((p) => p.id === this.localId);
-    if (!player) return;
-    const dir = this.input.vector();
-    if (!dir.x && !dir.y) return;
-    const mag = Math.hypot(dir.x, dir.y) || 1;
-    const dash = dir.dash ? DASH_SCALE : 1;
-    const speed = PLAYER_SPEED * dash * dt;
-    player.position.x = clamp(
-      player.position.x + (dir.x / mag) * speed,
-      PLAYER_RADIUS,
-      ARENA_SIZE.width - PLAYER_RADIUS
-    );
-    player.position.y = clamp(
-      player.position.y + (dir.y / mag) * speed,
-      PLAYER_RADIUS,
-      ARENA_SIZE.height - PLAYER_RADIUS
-    );
-  }
-
-  // BACKEND: DELETE - bot movement logic is client-only.
-  #moveBots() {
-    this.players
-      .filter((p) => p.id.startsWith("bot"))
-      .forEach((bot) => {
-        bot.position.x = clamp(
-          bot.position.x + (Math.random() - 0.5) * 160,
-          PLAYER_RADIUS,
-          ARENA_SIZE.width - PLAYER_RADIUS
-        );
-        bot.position.y = clamp(
-          bot.position.y + (Math.random() - 0.5) * 160,
-          PLAYER_RADIUS,
-          ARENA_SIZE.height - PLAYER_RADIUS
-        );
-      });
-  }
-
-  // BACKEND: MOVE - tag resolution must be server authoritative.
-  #resolveTags() {
-    const itPlayer = this.players.find((p) => p.isIt);
-    if (!itPlayer) return;
-    this.players.forEach((candidate) => {
-      if (candidate.id === itPlayer.id) return;
-      const dist = Math.hypot(
-        candidate.position.x - itPlayer.position.x,
-        candidate.position.y - itPlayer.position.y
-      );
-      if (dist < 54) {
-        const transfer =
-          itPlayer.score > candidate.score
-            ? Math.min(1, candidate.score)
-            : 0;
-        itPlayer.isIt = false;
-        candidate.isIt = true;
-        if (transfer > 0) {
-          itPlayer.score += transfer;
-          candidate.score -= transfer;
-          itPlayer.streak = (itPlayer.streak || 0) + 1;
-        } else {
-          itPlayer.streak = 0;
-        }
-        candidate.streak = 0;
-        this.audio.blip({ freq: 500 });
-        this.#emit("tag", {
-          from: itPlayer.name,
-          to: candidate.name,
-          streak: itPlayer.streak,
-          score: itPlayer.score,
-        });
-      }
-    });
-  }
-
-  // BACKEND: MOVE - orb collection should be server authoritative.
-  #resolveOrbs() {
-    if (this.orbs.length === 0) return;
-    const remaining = [];
-    this.orbs.forEach((orb) => {
-      let collected = false;
-      for (const player of this.players) {
-        const dist = Math.hypot(
-          player.position.x - orb.position.x,
-          player.position.y - orb.position.y
-        );
-        if (dist <= PLAYER_RADIUS + orb.radius) {
-          player.score += orb.value;
-          collected = true;
-          break;
-        }
-      }
-      if (!collected) remaining.push(orb);
-    });
-    this.orbs = remaining;
-  }
-
-  #updateTimer(dt) {
-    if (this.ended) return;
-    this.timer = Math.max(0, this.timer - dt);
-    if (this.timer === 0) {
-      clearInterval(this.botTimer);
-      this.botTimer = null;
-      this.ended = true;
-      const ranked = [...this.players].sort((a, b) => b.score - a.score);
-      this.#emit("match-end", { players: ranked });
-    }
-  }
-
-  #snapshot() {
-    return {
-      players: [...this.players],
-      orbs: [...this.orbs],
-      timer: this.timer,
-      localId: this.localId,
-    };
-  }
-
-  #newPlayer(id, name, leader) {
-    const padding = Math.max(PLAYER_RADIUS * 2, 90);
-    const minX = padding;
-    const maxX = Math.max(padding, ARENA_SIZE.width - padding);
-    const minY = padding;
-    const maxY = Math.max(padding, ARENA_SIZE.height - padding);
-    return {
-      id,
-      name,
-      isLeader: leader,
-      isIt: false,
-      score: 0,
-      streak: 0,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      position: {
-        x: minX + Math.random() * (maxX - minX),
-        y: minY + Math.random() * (maxY - minY),
-      },
-    };
-  }
-
-  // BACKEND: MOVE - orb spawn generation should be server authoritative.
-  #spawnOrbs() {
-    if (this.ended) return;
-    const padding = PLAYER_RADIUS + 12;
-    const minX = padding;
-    const maxX = Math.max(padding, ARENA_SIZE.width - padding);
-    const minY = padding;
-    const maxY = Math.max(padding, ARENA_SIZE.height - padding);
-    for (let i = 0; i < ORB_SPAWN_COUNT; i += 1) {
-      const value = ORB_VALUES[Math.floor(Math.random() * ORB_VALUES.length)];
-      const radius = orbRadiusForValue(value);
-      this.orbCount += 1;
-      this.orbs.push({
-        id: `orb-${this.orbCount}`,
-        value,
-        radius,
-        position: {
-          x: minX + Math.random() * (maxX - minX),
-          y: minY + Math.random() * (maxY - minY),
-        },
-      });
-    }
-  }
-
-  // BACKEND: DELETE - mock lobby churn is client-only.
-  #simulateLobby() {
-    if (this.ended || this.players.length === 0) return;
-    const shouldJoin = Math.random() > 0.5;
-    if (shouldJoin && this.players.length < 6) {
-      const bot = this.#spawnBot();
-      if (bot) this.#emit("lobby", { type: "join", name: bot.name });
-      return;
-    }
-    const removable = this.players.filter((p) => p.id !== this.localId);
-    if (removable.length <= 1) return;
-    const leaving = removable[Math.floor(Math.random() * removable.length)];
-    this.players = this.players.filter((p) => p.id !== leaving.id);
-    if (leaving.isIt && this.players.length) {
-      const fallback = this.players[Math.floor(Math.random() * this.players.length)];
-      fallback.isIt = true;
-    }
-    this.#emit("lobby", { type: "leave", name: leaving.name });
-  }
-
-  // BACKEND: DELETE - bots are for sandbox testing only.
-  #spawnBot() {
-    this.botCount += 1;
-    const id = `bot-${this.botCount}`;
-    const name = this.#uniqueBotName();
-    const bot = this.#newPlayer(id, name, false);
-    this.players.push(bot);
-    return bot;
-  }
-
-  // BACKEND: DELETE - bots are for sandbox testing only.
-  #uniqueBotName() {
-    const pick = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-    const collisions = this.players.filter((p) => p.name.startsWith(pick)).length;
-    return collisions ? `${pick}${collisions + 1}` : pick;
-  }
-}
-
 class InterfaceController {
   constructor() {
     this.renderer = new ArenaRenderer(arenaFieldEl || arenaEl);
     this.audio = new AudioKit();
-    this.sandbox = null;
     this.socket = null;
     this.streak = 0;
     this.activePlayers = [];
@@ -720,6 +414,9 @@ class InterfaceController {
     this.input = new InputController();
     this.input.attach();
     this.inputLoop = null;
+    this.stateBuffer = [];
+    this.renderLoop = null;
+    this.interpolationDelay = 50;
   }
 
   bootstrap() {
@@ -738,22 +435,7 @@ class InterfaceController {
       this.#joinRoom();
     });
 
-    devModeBtn.addEventListener("click", () => {
-      this.audio.prime();
-      syncArenaSize();
-      this.#enterSandbox("Echo");
-      overlayEl.hidden = true;
-      requestAnimationFrame(() => syncArenaSize());
-    });
-
     startMatchBtn.addEventListener("click", () => {
-      if (this.sandbox) {
-        this.status = "running";
-        overlayEl.hidden = true;
-        startMatchBtn.disabled = true;
-        requestAnimationFrame(() => syncArenaSize());
-        return;
-      }
       if (!this.socket || !this.isHost) return;
       this.socket.emit("game-action", { action: "start" });
     });
@@ -843,21 +525,6 @@ class InterfaceController {
     });
   }
 
-  #enterSandbox(name) {
-    syncArenaSize();
-    startMatchBtn.disabled = false;
-    startMatchBtn.textContent = "Start Match (sandbox)";
-    // BACKEND: DELETE - sandbox start will be replaced by socket join.
-    this.sandbox?.stop();
-    this.sandbox = new SandboxEngine(this.renderer, this.audio);
-    this.touchStick.setInput(this.sandbox.input);
-    // BACKEND: DELETE - sandbox events will be replaced by socket events.
-    this.sandbox.on("state", (state) => this.#applyState(state));
-    this.sandbox.on("tag", (data) => this.#handleTag(data));
-    this.sandbox.on("match-end", ({ players }) => this.#handleMatchEnd(players));
-    this.sandbox.on("lobby", (payload) => this.#handleLobbyEvent(payload));
-    this.sandbox.start(name);
-  }
 
   #handleRoomJoined({ roomCode, playerId, isHost, arenaSize, players, orbs, state }) {
     this.localId = playerId;
@@ -985,17 +652,94 @@ class InterfaceController {
     this.localId = localId;
     this.activePlayers = players;
     this.timer = timer;
-    this.renderer.sync(players, localId);
-    this.renderer.syncOrbs(orbs ?? []);
     this.#updateLeaderboard(players);
     timerLabel.textContent = formatClock(timer);
-    this.miniMap.draw(players, localId);
+    this.#pushSnapshot({ players, orbs, localId });
     const localPlayer = players.find((player) => player.id === localId);
     const streakValue = localPlayer?.streak ?? 0;
     this.streak = streakValue;
     if (statusLabel) {
       statusLabel.textContent = this.#statusText();
     }
+  }
+
+  #pushSnapshot({ players, orbs, localId }) {
+    const timestamp = performance.now();
+    this.stateBuffer.push({
+      time: timestamp,
+      players: players ?? [],
+      orbs: orbs ?? [],
+      localId,
+    });
+    if (this.stateBuffer.length > 20) {
+      this.stateBuffer.splice(0, this.stateBuffer.length - 20);
+    }
+    this.#startRenderLoop();
+  }
+
+  #startRenderLoop() {
+    if (this.renderLoop) return;
+    const render = (now) => {
+      this.#renderFrame(now);
+      this.renderLoop = requestAnimationFrame(render);
+    };
+    this.renderLoop = requestAnimationFrame(render);
+  }
+
+  #renderFrame(now) {
+    if (!this.stateBuffer.length) return;
+    syncArenaSize();
+    const renderTime = now - this.interpolationDelay;
+    const { older, newer, alpha } = this.#getSnapshots(renderTime);
+    const interpolatedPlayers = this.#interpolatePlayers(
+      older.players,
+      newer.players,
+      alpha
+    );
+    const activeLocalId = newer.localId ?? older.localId;
+    this.renderer.sync(interpolatedPlayers, activeLocalId);
+    this.renderer.syncOrbs(newer.orbs ?? older.orbs ?? []);
+    this.miniMap.draw(interpolatedPlayers, activeLocalId);
+  }
+
+  #getSnapshots(renderTime) {
+    const buffer = this.stateBuffer;
+    if (buffer.length === 1) {
+      return { older: buffer[0], newer: buffer[0], alpha: 0 };
+    }
+    let older = buffer[0];
+    let newer = buffer[buffer.length - 1];
+    for (let i = 0; i < buffer.length - 1; i += 1) {
+      const current = buffer[i];
+      const next = buffer[i + 1];
+      if (renderTime >= current.time && renderTime <= next.time) {
+        older = current;
+        newer = next;
+        break;
+      }
+      if (renderTime > next.time) {
+        older = next;
+        newer = next;
+      }
+    }
+    const span = Math.max(1, newer.time - older.time);
+    const alpha = clamp((renderTime - older.time) / span, 0, 1);
+    return { older, newer, alpha };
+  }
+
+  #interpolatePlayers(older, newer, alpha) {
+    const olderMap = new Map(older.map((player) => [player.id, player]));
+    return newer.map((player) => {
+      const prev = olderMap.get(player.id);
+      if (!prev) return player;
+      return {
+        ...player,
+        position: {
+          x: lerp(prev.position.x, player.position.x, alpha),
+          y: lerp(prev.position.y, player.position.y, alpha),
+        },
+      };
+    });
   }
 
   #updateLeaderboard(players) {
