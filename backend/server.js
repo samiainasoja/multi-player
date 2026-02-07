@@ -1,6 +1,6 @@
 /**
- * Multi-Player Tag Game - Backend
- * Express + Socket.io, room-based real-time arena tag.
+ * Multi-Player Arena Game - Backend
+ * Express + Socket.io, room-based real-time arena game.
  */
 
 const path = require('path');
@@ -190,6 +190,6 @@ io.on('connection', (socket) => {
 // --- Start server ---
 
 server.listen(PORT, () => {
-  console.log(`Multi-Player Tag backend running on port ${PORT}`);
+  console.log(`Multi-Player Arena backend running on port ${PORT}`);
   console.log(`Static files from: ${PUBLIC_DIR}`);
 });

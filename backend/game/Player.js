@@ -1,11 +1,10 @@
 /**
- * Player - Represents a player in the tag game arena.
+ * Player - Represents a player in the game arena.
  * Server-authoritative: position and velocity are managed by the server.
  */
 
 const PLAYER_RADIUS = 25;
 const MOVE_SPEED = 4;
-const TAG_COOLDOWN_MS = 1000;
 const DASH_SCALE = 1.55;
 
 const PLAYER_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
@@ -24,7 +23,6 @@ class Player {
     this.isHost = isHost;
     this.color = PLAYER_COLORS[colorIndex % PLAYER_COLORS.length];
     this.score = 0;
-    this.lastTagTime = 0;
     this.dash = false; // Whether player is currently dashing
 
     // Spawn in center-ish, spread slightly to avoid overlap
@@ -44,10 +42,6 @@ class Player {
 
   static get MOVE_SPEED() {
     return MOVE_SPEED;
-  }
-
-  static get TAG_COOLDOWN_MS() {
-    return TAG_COOLDOWN_MS;
   }
 
   static get PLAYER_COLORS() {
@@ -85,21 +79,7 @@ class Player {
   }
 
   /**
-   * Whether this player can tag someone (cooldown elapsed).
-   */
-  canTag(now = Date.now()) {
-    return now - this.lastTagTime >= TAG_COOLDOWN_MS;
-  }
-
-  /**
-   * Record a tag and update score.
-   */
-  recordTag(now = Date.now()) {
-    this.lastTagTime = now;
-  }
-
-  /**
-   * Add score (can be negative if you validate before calling).
+   * Add score (can be negative for obstacles).
    */
   addScore(delta) {
     if (!Number.isFinite(delta) || delta === 0) return;

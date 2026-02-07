@@ -12,11 +12,9 @@ const roomInput = $("#roomCode");
 const startMatchBtn = $("#startMatch");
 const pauseToggleBtn = $("#pauseToggle");
 const leaveMatchBtn = $("#leaveMatch");
-const resetViewBtn = $("#resetView");
 const messagesEl = $("#arenaMessages");
 const eventFeedEl = $("#eventFeed");
 const miniMapCanvas = $("#miniMap");
-const motionToggle = $("#motionToggle");
 const touchStickEl = $("#touchStick");
 const touchDashBtn = $("#touchDash");
 const roomDisplay = $("#roomDisplay");
@@ -28,12 +26,17 @@ const resumeBtn = $("#resumeBtn");
 const quitMatchBtn = $("#quitMatch");
 const copyRoomBtn = $("#copyRoom");
 const createLobbyBtn = $("#createLobby");
+const winOverlay = $("#winOverlay");
+const winTitle = $("#winTitle");
+const winSubtitle = $("#winSubtitle");
+const winScoresList = $("#winScoresList");
+const winBackBtn = $("#winBackBtn");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
 let ARENA_SCALE = 1;
 let ARENA_OFFSET = { x: 0, y: 0 };
-const MATCH_SECONDS = 5 * 60;
+const MATCH_SECONDS = 2 * 60;
 const PLAYER_RADIUS = 27;
 
 const KEY_MAP = {
@@ -200,11 +203,6 @@ class MiniMapRenderer {
       this.ctx.beginPath();
       this.ctx.arc(px, py, player.id === localId ? 5 : 3.5, 0, Math.PI * 2);
       this.ctx.fill();
-      if (player.isIt) {
-        this.ctx.strokeStyle = "rgba(255,255,255,0.8)";
-        this.ctx.lineWidth = 1;
-        this.ctx.stroke();
-      }
     });
   }
 }
@@ -318,7 +316,6 @@ class ArenaRenderer {
       }
       const el = this.domNodes.get(player.id);
       el.dataset.leader = String(player.isLeader);
-      el.dataset.tagState = player.isIt ? "it" : "safe";
       const initials = el.querySelector(".player-node__initial");
       const badge = el.querySelector(".player-node__badge");
       if (initials) initials.textContent = player.name[0]?.toUpperCase() ?? "?";
@@ -353,9 +350,18 @@ class ArenaRenderer {
     orbs.forEach((orb) => {
       if (!this.orbNodes.has(orb.id)) {
         const node = document.createElement("div");
-        node.className = "point-orb";
-        node.dataset.value = String(orb.value);
-        node.textContent = `+${orb.value}`;
+        if (orb.type === "obstacle") {
+          node.className = "point-orb point-orb--obstacle";
+          node.textContent = `${orb.value}`;
+        } else if (orb.type === "golden") {
+          node.className = "point-orb point-orb--golden";
+          node.textContent = `+${orb.value}`;
+        } else {
+          node.className = "point-orb";
+          node.textContent = `+${orb.value}`;
+        }
+        node.dataset.value = String(Math.abs(orb.value));
+        node.dataset.type = orb.type || "point";
         this.parent.appendChild(node);
         this.orbNodes.set(orb.id, node);
       }
@@ -394,7 +400,6 @@ class InterfaceController {
       ? window.matchMedia("(pointer: coarse)").matches
       : false;
     this.localId = null;
-    this.tagTicker = null;
     this.isHost = false;
     this.pausedBy = null; // Track who paused the game
     this.input = new InputController();
@@ -474,7 +479,6 @@ class InterfaceController {
       this.socket.emit("game-action", { action });
     });
 
-    resetViewBtn.addEventListener("click", () => this.renderer.resetCamera());
     leaveMatchBtn.addEventListener("click", () => window.location.reload());
 
     copyRoomBtn?.addEventListener("click", async () => {
@@ -488,8 +492,12 @@ class InterfaceController {
       }
     });
 
-    motionToggle?.addEventListener("change", () => {
-      document.body.classList.toggle("reduced-motion", motionToggle.checked);
+    winBackBtn?.addEventListener("click", () => {
+      if (winOverlay) winOverlay.hidden = true;
+      overlayEl.hidden = false;
+      startMatchBtn.disabled = !this.isHost;
+      startMatchBtn.textContent = this.isHost ? "Restart Match" : "Waiting for host";
+      this.#updateLobbyList(this.activePlayers);
     });
 
     if (this.prefersCoarse) {
@@ -507,7 +515,6 @@ class InterfaceController {
     this.socket.on("room-joined", (payload) => this.#handleRoomJoined(payload));
     this.socket.on("room-update", (payload) => this.#handleRoomUpdate(payload));
     this.socket.on("game-update", (payload) => this.#handleGameUpdate(payload));
-    this.socket.on("tag-event", (payload) => this.#handleSocketTag(payload));
     this.socket.on("game-state", (payload) => this.#handleGameState(payload));
     this.socket.on("game-ended", (payload) => this.#handleGameEnded(payload));
     this.socket.on("system-message", (payload) => {
@@ -551,6 +558,7 @@ class InterfaceController {
     startMatchBtn.textContent = this.isHost ? "Start Match" : "Waiting for host";
     overlayEl.hidden = state === "playing";
     if (pauseOverlay) pauseOverlay.hidden = true;
+    if (winOverlay) winOverlay.hidden = true;
     this.touchStick.setInput(this.input);
     this.#startInputLoop();
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
@@ -567,7 +575,10 @@ class InterfaceController {
 
   #handleGameUpdate({ players, orbs, timer, state }) {
     this.status = state || this.status;
-    if (state === "playing") overlayEl.hidden = true;
+    if (state === "playing") {
+      overlayEl.hidden = true;
+      if (winOverlay) winOverlay.hidden = true;
+    }
     if (state === "paused") {
       pauseToggleBtn.setAttribute("aria-pressed", "true");
       pauseToggleBtn.textContent = "Resume";
@@ -579,13 +590,6 @@ class InterfaceController {
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer, localId: this.localId });
     this.#updateLobbyList(players ?? []);
     if (statusLabel) statusLabel.textContent = this.#statusText();
-  }
-
-  #handleSocketTag({ taggerId, taggedId, taggerName, taggedName, scores }) {
-    const score = scores?.[taggerId] ?? 0;
-    this.#updateTagTicker({ from: taggerName, to: taggedName, score });
-    this.#logEvent(`${taggerName} → ${taggedName}`);
-    this.audio.blip({ freq: 500 + Math.random() * 100 });
   }
 
   #handleGameState({ state, actionBy, pausedBy }) {
@@ -614,19 +618,44 @@ class InterfaceController {
       pauseToggleBtn.textContent = "Pause";
       overlayEl.hidden = true;
       if (pauseOverlay) pauseOverlay.hidden = true;
+      if (winOverlay) winOverlay.hidden = true;
     }
-    if (state === "ended") overlayEl.hidden = false;
+    if (state === "ended") overlayEl.hidden = true;
     if (statusLabel) statusLabel.textContent = this.#statusText(state);
   }
 
-  #handleGameEnded({ winner }) {
-    if (winner?.name) this.#toast(`${winner.name} takes the round`);
-    overlayEl.hidden = false;
-    startMatchBtn.disabled = !this.isHost;
-    startMatchBtn.textContent = this.isHost ? "Restart Match" : "Waiting for host";
+  #handleGameEnded({ winner, finalScores }) {
     if (pauseOverlay) pauseOverlay.hidden = true;
-    this.#updateLobbyList(this.activePlayers);
+    overlayEl.hidden = true;
     if (statusLabel) statusLabel.textContent = this.#statusText("ended");
+
+    // Show win screen
+    if (winOverlay) {
+      winOverlay.hidden = false;
+      const isLocalWinner = winner && winner.id === this.localId;
+      if (winTitle) {
+        winTitle.textContent = isLocalWinner ? "You Win!" : `${winner?.name || "Nobody"} Wins!`;
+      }
+      if (winSubtitle) {
+        winSubtitle.textContent = isLocalWinner
+          ? `Congratulations! You scored ${winner?.score ?? 0} points.`
+          : `They scored ${winner?.score ?? 0} points.`;
+      }
+      if (winScoresList && finalScores) {
+        winScoresList.innerHTML = "";
+        const sorted = Object.entries(finalScores)
+          .map(([id, data]) => ({ id, ...data }))
+          .sort((a, b) => b.score - a.score);
+        sorted.forEach((entry, idx) => {
+          const row = document.createElement("li");
+          const rank = idx === 0 ? "1st" : idx === 1 ? "2nd" : idx === 2 ? "3rd" : `${idx + 1}th`;
+          row.innerHTML = `<span class="win-rank">${rank}</span> <span class="win-name">${entry.name}</span> <span class="win-score">${entry.score} pts</span>`;
+          if (entry.id === this.localId) row.classList.add("is-local");
+          if (idx === 0) row.classList.add("is-winner");
+          winScoresList.appendChild(row);
+        });
+      }
+    }
   }
 
   #statusText(nextState) {
@@ -652,7 +681,6 @@ class InterfaceController {
       const badge = document.createElement("span");
       const labels = [];
       if (player.isHost) labels.push("Host");
-      if (player.canScore === false) labels.push("Tagger");
       if (!labels.length) labels.push("Player");
       badge.textContent = labels.join(" • ");
       row.appendChild(badge);
@@ -769,8 +797,6 @@ class InterfaceController {
     sorted.forEach((player) => {
       const item = document.createElement("li");
       item.textContent = `${player.name} — ${player.score}`;
-      // mark tagger visually
-      item.classList.toggle("is-tagger", player.canScore === false);
       item.classList.toggle("is-local", player.id === this.localId);
       leaderboardEl.appendChild(item);
     });
@@ -786,27 +812,6 @@ class InterfaceController {
 
   #logEvent(text) {
     this.feed.push(text);
-  }
-
-  #ensureTagTicker() {
-    if (!messagesEl) return null;
-    if (!this.tagTicker) {
-      this.tagTicker = document.createElement("div");
-      this.tagTicker.className = "tag-ticker";
-      messagesEl.prepend(this.tagTicker);
-    }
-    return this.tagTicker;
-  }
-
-  #updateTagTicker({ from, to, score }) {
-    const ticker = this.#ensureTagTicker();
-    if (!ticker) return;
-    const suffix = score && score > 1 ? ` x${score}` : "";
-    ticker.textContent = `${from} tagged ${to}${suffix}`;
-    ticker.classList.remove("tag-ticker--flash");
-    // force reflow to restart animation
-    void ticker.offsetWidth;
-    ticker.classList.add("tag-ticker--flash");
   }
 
 }

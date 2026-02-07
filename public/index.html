@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flux Tag Arena</title>
+    <title>Flux Arena</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,7 +18,7 @@
       <header class="hud">
         <section class="hud__block">
           <p class="hud__label">Match Timer</p>
-          <p class="hud__value" id="timerLabel">05:00</p>
+          <p class="hud__value" id="timerLabel">02:00</p>
         </section>
         <section class="hud__block">
           <p class="hud__label">Match Status</p>
@@ -34,10 +34,6 @@
             <button id="pauseToggle" class="pill-btn" aria-pressed="false">
               Pause
             </button>
-            <label class="control-toggle">
-              <input type="checkbox" id="motionToggle" />
-              <span>Reduce Motion</span>
-            </label>
           </div>
         </section>
       </header>
@@ -64,7 +60,6 @@
           <p class="cta-bar__hint">Drag stick on touch devices</p>
         </div>
         <div class="cta-bar__actions">
-          <button id="resetView" class="ghost-btn">Center Camera</button>
           <button id="leaveMatch" class="ghost-btn ghost-btn--danger">
             Leave Match
           </button>
@@ -87,8 +82,8 @@
     <section class="overlay" id="overlay" aria-modal="true" role="dialog">
       <div class="overlay__panel">
         <div class="overlay__header">
-          <h1>Flux Tag Arena</h1>
-          <p>Fast-paced chase, simple rules, pure chaos.</p>
+          <h1>Flux Arena</h1>
+          <p>Collect points, dodge obstacles, grab the gold.</p>
         </div>
         <div class="overlay__stats">
           <div class="overlay__stat">
@@ -141,8 +136,8 @@
         </form>
         <div class="overlay__footer">
           <p>
-            Lobby leader can start, pause, or end the match for everyone. Tags
-            give +1. Highest score when the buzzer hits wins.
+            Collect blue orbs for points, avoid red obstacles, and chase the
+            rare golden orb for 50 pts. Highest score when time runs out wins!
           </p>
           <button id="startMatch" class="pill-btn" disabled>Start Match</button>
         </div>
@@ -159,6 +154,16 @@
           <button id="resumeBtn" class="pill-btn">Resume Match</button>
           <button id="quitMatch" class="ghost-btn ghost-btn--danger">Quit Match</button>
         </div>
+      </div>
+    </section>
+
+    <section class="overlay overlay--win" id="winOverlay" aria-modal="true" role="dialog" hidden>
+      <div class="overlay__panel win-panel">
+        <div class="win-trophy" aria-hidden="true">&#127942;</div>
+        <h1 id="winTitle" class="win-title">Game Over</h1>
+        <p id="winSubtitle" class="win-subtitle">Final scores</p>
+        <ol id="winScoresList" class="win-scores"></ol>
+        <button id="winBackBtn" class="pill-btn pill-btn--glow">Back to Lobby</button>
       </div>
     </section>
 

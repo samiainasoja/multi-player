@@ -3,15 +3,19 @@
  */
 
 const { Player } = require('./Player');
-const { checkCollisions, distance } = require('./Collision');
+const { distance } = require('./Collision');
 
 const ARENA_SIZE = { width: 1200, height: 720 };
-const GAME_DURATION_SEC = 300; // 5 minutes
+const GAME_DURATION_SEC = 120; // 2 minutes
 const TICK_MS = 1000 / 60; // ~60 FPS
 const ORB_SPAWN_INTERVAL_MS = 4000;
 const ORB_SPAWN_COUNT = 4;
 const ORB_VALUES = [1, 3, 5, 10];
-const orbRadiusForValue = (value) => 6 + value * 1.2;
+const OBSTACLE_VALUES = [-3, -5, -8];
+const OBSTACLE_SPAWN_COUNT = 2;
+const GOLDEN_VALUE = 50;
+const GOLDEN_SPAWN_CHANCE = 0.20; // 20% chance per spawn cycle
+const orbRadiusForValue = (value) => Math.min(6 + Math.abs(value) * 1.2, 20);
 
 class Game {
   /**
@@ -29,7 +33,6 @@ class Game {
     this.timerSec = GAME_DURATION_SEC;
     this.gameLoopInterval = null;
     this.onTick = null; // (game) => void - set by GameManager to broadcast
-    this.onTag = null;   // (game, taggerId, taggedId) => void
     this.onGameEnd = null; // (game, winner, finalScores) => void
     this.orbs = [];
     this.orbCount = 0;
@@ -93,16 +96,20 @@ class Game {
   }
 
   canStart() {
-    return this.state === 'waiting' && this.players.size >= 2;
+    return (this.state === 'waiting' || this.state === 'ended') && this.players.size >= 2;
   }
 
   start() {
-    if (this.state !== 'waiting' || !this.canStart()) return false;
+    if (!this.canStart()) return false;
     this.state = 'playing';
     this.timerSec = GAME_DURATION_SEC;
     this.orbs = [];
     this.orbCount = 0;
     this.lastOrbSpawnAt = Date.now();
+    // Reset scores on restart
+    for (const p of this.players.values()) {
+      p.score = 0;
+    }
     this.spawnOrbs();
     this.startGameLoop();
     return true;
@@ -181,25 +188,7 @@ class Game {
       p.updatePosition(arenaSize);
     }
 
-    // 2. Collisions / tags
-    const tagEvents = checkCollisions(playerList, now);
-    for (const { taggerId, taggedId } of tagEvents) {
-      const tagger = this.players.get(taggerId);
-      const tagged = this.players.get(taggedId);
-      if (tagger && tagged) {
-        tagger.recordTag(now);
-        if (tagger.score > tagged.score) {
-          const transfer = Math.min(1, tagged.score);
-          if (transfer > 0) {
-            tagger.addScore(transfer);
-            tagged.addScore(-transfer);
-          }
-        }
-        if (this.onTag) this.onTag(this, taggerId, taggedId);
-      }
-    }
-
-    // 2.5 Orb collection
+    // 2. Orb collection (points, obstacles, golden)
     this.resolveOrbCollisions(playerList);
 
     // 3. Timer
@@ -218,7 +207,6 @@ class Game {
     this.players.clear();
     this.orbs = [];
     this.onTick = null;
-    this.onTag = null;
     this.onGameEnd = null;
   }
 
@@ -226,30 +214,48 @@ class Game {
     return this.orbs.map(orb => ({
       id: orb.id,
       value: orb.value,
+      type: orb.type,
       radius: orb.radius,
       position: { ...orb.position }
     }));
   }
 
-  spawnOrbs() {
+  _spawnOrbAt(value, type) {
     const padding = Player.PLAYER_RADIUS + 12;
+    const radius = orbRadiusForValue(value);
+    const minX = padding + radius;
+    const maxX = Math.max(minX, this.arenaSize.width - padding - radius);
+    const minY = padding + radius;
+    const maxY = Math.max(minY, this.arenaSize.height - padding - radius);
+    this.orbCount += 1;
+    this.orbs.push({
+      id: `orb-${this.orbCount}`,
+      value,
+      type,
+      radius,
+      position: {
+        x: minX + Math.random() * (maxX - minX),
+        y: minY + Math.random() * (maxY - minY)
+      }
+    });
+  }
+
+  spawnOrbs() {
+    // Regular point orbs (blue)
     for (let i = 0; i < ORB_SPAWN_COUNT; i++) {
       const value = ORB_VALUES[Math.floor(Math.random() * ORB_VALUES.length)];
-      const radius = orbRadiusForValue(value);
-      const minX = padding + radius;
-      const maxX = Math.max(minX, this.arenaSize.width - padding - radius);
-      const minY = padding + radius;
-      const maxY = Math.max(minY, this.arenaSize.height - padding - radius);
-      this.orbCount += 1;
-      this.orbs.push({
-        id: `orb-${this.orbCount}`,
-        value,
-        radius,
-        position: {
-          x: minX + Math.random() * (maxX - minX),
-          y: minY + Math.random() * (maxY - minY)
-        }
-      });
+      this._spawnOrbAt(value, 'point');
+    }
+
+    // Obstacle orbs (red, negative)
+    for (let i = 0; i < OBSTACLE_SPAWN_COUNT; i++) {
+      const value = OBSTACLE_VALUES[Math.floor(Math.random() * OBSTACLE_VALUES.length)];
+      this._spawnOrbAt(value, 'obstacle');
+    }
+
+    // Golden orb (rare, 50 pts)
+    if (Math.random() < GOLDEN_SPAWN_CHANCE) {
+      this._spawnOrbAt(GOLDEN_VALUE, 'golden');
     }
   }
 
@@ -261,6 +267,7 @@ class Game {
       for (const player of playerList) {
         const dist = distance(player.position.x, player.position.y, orb.position.x, orb.position.y);
         if (dist <= Player.PLAYER_RADIUS + orb.radius) {
+          // Obstacles give negative score, points/golden give positive
           player.addScore(orb.value);
           collected = true;
           break;

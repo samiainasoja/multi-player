@@ -1,5 +1,5 @@
 /**
- * GameManager - Wires game loop to Socket.io: tick broadcast, tag events, game end.
+ * GameManager - Wires game loop to Socket.io: tick broadcast and game end.
  */
 
 class GameManager {
@@ -24,20 +24,6 @@ class GameManager {
         orbs: g.getOrbsList(),
         timer: Math.max(0, Math.ceil(g.timerSec)),
         state: g.state
-      });
-    };
-
-    game.onTag = (g, taggerId, taggedId) => {
-      const tagger = g.getPlayer(taggerId);
-      const tagged = g.getPlayer(taggedId);
-      const scores = {};
-      for (const [id, p] of g.players) scores[id] = p.score;
-      this.io.to(roomId).emit('tag-event', {
-        taggerId,
-        taggedId,
-        taggerName: tagger ? tagger.name : '',
-        taggedName: tagged ? tagged.name : '',
-        scores
       });
     };
 
