@@ -93,14 +93,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player-move', (payload) => {
-    const { x, y } = payload || {};
+    const { x, y, dash } = payload || {};
     const game = roomManager.getGameForSocket(socket.id);
     if (!game) return;
     const player = game.getPlayer(socket.id);
     if (!player) return;
     const nx = typeof x === 'number' ? x : 0;
     const ny = typeof y === 'number' ? y : 0;
-    player.setVelocity(nx, ny);
+    const isDash = Boolean(dash);
+    player.setVelocity(nx, ny, isDash);
   });
 
   socket.on('game-action', (payload) => {
@@ -116,13 +117,17 @@ io.on('connection', (socket) => {
         if (game.start()) gameManager.broadcastRoomUpdate(game);
         break;
       case 'pause':
-        if (game.pause()) gameManager.broadcastGameState(game, 'paused', socket.id);
+        // Any player can pause
+        if (game.pause(socket.id)) gameManager.broadcastGameState(game, 'paused', socket.id);
         break;
       case 'resume':
-        if (game.resume()) gameManager.broadcastGameState(game, 'playing', socket.id);
+        // Only host or player who paused can resume
+        if (game.resume(socket.id)) {
+          gameManager.broadcastGameState(game, 'playing', socket.id);
+        }
         break;
       case 'quit':
-        if (!player.isHost) return;
+        // Anyone can quit, which ends the game for everyone
         game.quit();
         gameManager.broadcastGameState(game, 'ended', socket.id);
         break;

@@ -27,6 +27,7 @@ const pausedByLabel = $("#pausedBy");
 const resumeBtn = $("#resumeBtn");
 const quitMatchBtn = $("#quitMatch");
 const copyRoomBtn = $("#copyRoom");
+const createLobbyBtn = $("#createLobby");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
@@ -411,6 +412,7 @@ class InterfaceController {
     this.localId = null;
     this.tagTicker = null;
     this.isHost = false;
+    this.pausedBy = null; // Track who paused the game
     this.input = new InputController();
     this.input.attach();
     this.inputLoop = null;
@@ -435,6 +437,12 @@ class InterfaceController {
       this.#joinRoom();
     });
 
+    createLobbyBtn.addEventListener("click", () => {
+      this.audio.prime();
+      syncArenaSize();
+      this.#createLobby();
+    });
+
     startMatchBtn.addEventListener("click", () => {
       if (!this.socket || !this.isHost) return;
       this.socket.emit("game-action", { action: "start" });
@@ -442,21 +450,36 @@ class InterfaceController {
 
     pauseToggleBtn.addEventListener("click", () => {
       const pressed = pauseToggleBtn.getAttribute("aria-pressed") === "true";
+      if (!this.socket) return;
+      
+      // If trying to resume, check permissions
+      if (pressed) {
+        // Can resume if you're the host or the player who paused
+        if (!this.isHost && this.localId !== this.pausedBy) {
+          this.#toast("Only the host or who paused can resume");
+          return;
+        }
+      }
+      
       pauseToggleBtn.setAttribute("aria-pressed", String(!pressed));
       pauseToggleBtn.textContent = pressed ? "Pause" : "Resume";
-      if (!this.socket) return;
       const action = pressed ? "resume" : "pause";
       this.socket.emit("game-action", { action });
     });
 
     resumeBtn?.addEventListener("click", () => {
       if (!this.socket) return;
+      // Check permissions before attempting to resume
+      if (!this.isHost && this.localId !== this.pausedBy) {
+        this.#toast("Only the host or who paused can resume");
+        return;
+      }
       this.socket.emit("game-action", { action: "resume" });
     });
 
     quitMatchBtn?.addEventListener("click", () => {
       if (!this.socket) return;
-      this.socket.emit("leave-game");
+      this.socket.emit("game-action", { action: "quit" });
     });
 
     window.addEventListener("keydown", (event) => {
@@ -525,6 +548,15 @@ class InterfaceController {
     });
   }
 
+  #createLobby() {
+    const socket = this.#connectSocket();
+    if (!socket) return;
+    const playerName = playerNameInput.value.trim() || "Pilot";
+    socket.emit("join-room", { playerName, roomCode: undefined }, (err) => {
+      if (err?.message) this.#toast(err.message);
+    });
+  }
+
 
   #handleRoomJoined({ roomCode, playerId, isHost, arenaSize, players, orbs, state }) {
     this.localId = playerId;
@@ -576,8 +608,10 @@ class InterfaceController {
     this.audio.blip({ freq: 500 + Math.random() * 100 });
   }
 
-  #handleGameState({ state, actionBy }) {
+  #handleGameState({ state, actionBy, pausedBy }) {
     if (state === "paused") {
+      // Use pausedBy from payload, or fallback to actionBy (the one who triggered pause)
+      this.pausedBy = pausedBy ?? actionBy;
       pauseToggleBtn.setAttribute("aria-pressed", "true");
       pauseToggleBtn.textContent = "Resume";
       if (pauseOverlay) {
@@ -586,10 +620,16 @@ class InterfaceController {
         if (pausedByLabel) {
           pausedByLabel.textContent = name ? `Paused by ${name}` : "Paused";
         }
-        if (resumeBtn) resumeBtn.disabled = false;
+        // Only enable resume button for host or player who paused
+        if (resumeBtn) {
+          const canResume = this.isHost || this.localId === this.pausedBy;
+          resumeBtn.disabled = !canResume;
+          resumeBtn.textContent = canResume ? "Resume Match" : "Waiting for host or pauser";
+        }
       }
     }
     if (state === "playing") {
+      this.pausedBy = null; // Clear pausedBy when game resumes
       pauseToggleBtn.setAttribute("aria-pressed", "false");
       pauseToggleBtn.textContent = "Pause";
       overlayEl.hidden = true;
@@ -630,7 +670,11 @@ class InterfaceController {
       const row = document.createElement("li");
       row.textContent = player.name;
       const badge = document.createElement("span");
-      badge.textContent = player.isHost ? "Host" : "Player";
+      const labels = [];
+      if (player.isHost) labels.push("Host");
+      if (player.canScore === false) labels.push("Tagger");
+      if (!labels.length) labels.push("Player");
+      badge.textContent = labels.join(" • ");
       row.appendChild(badge);
       if (player.id === this.localId) row.style.color = "var(--ink-strong)";
       playerList.appendChild(row);
@@ -641,8 +685,8 @@ class InterfaceController {
     if (this.inputLoop) return;
     const tick = () => {
       if (!this.socket) return;
-      const { x, y } = this.input.vector();
-      this.socket.emit("player-move", { x, y });
+      const { x, y, dash } = this.input.vector();
+      this.socket.emit("player-move", { x, y, dash });
       this.inputLoop = requestAnimationFrame(tick);
     };
     this.inputLoop = requestAnimationFrame(tick);
@@ -748,7 +792,8 @@ class InterfaceController {
     sorted.forEach((player) => {
       const item = document.createElement("li");
       item.textContent = `${player.name} — ${player.score}`;
-      item.classList.toggle("is-it", player.isIt);
+      // mark tagger visually
+      item.classList.toggle("is-tagger", player.canScore === false);
       item.classList.toggle("is-local", player.id === this.localId);
       leaderboardEl.appendChild(item);
     });

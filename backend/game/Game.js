@@ -24,6 +24,7 @@ class Game {
     this.hostId = hostId;
     this.players = new Map(); // socketId -> Player
     this.state = 'waiting'; // 'waiting' | 'playing' | 'paused' | 'ended'
+    this.pausedBy = null; // socketId of who paused the game
     this.arenaSize = { ...ARENA_SIZE };
     this.timerSec = GAME_DURATION_SEC;
     this.gameLoopInterval = null;
@@ -107,16 +108,23 @@ class Game {
     return true;
   }
 
-  pause() {
+  pause(pausedById) {
     if (this.state !== 'playing') return false;
     this.state = 'paused';
+    this.pausedBy = pausedById; // Track who paused the game
     this.stopGameLoop();
     return true;
   }
 
-  resume() {
+  resume(resumedById) {
     if (this.state !== 'paused') return false;
+    // Only host or the player who paused can resume
+    const hostId = this.hostId;
+    if (resumedById !== hostId && resumedById !== this.pausedBy) {
+      return false;
+    }
     this.state = 'playing';
+    this.pausedBy = null;
     this.startGameLoop();
     return true;
   }

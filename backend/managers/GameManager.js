@@ -76,7 +76,12 @@ class GameManager {
    * Emit game-state (e.g. paused/resumed/quit) to room.
    */
   broadcastGameState(game, state, actionBy) {
-    this.io.to(game.roomId).emit('game-state', { state, actionBy });
+    const payload = { state, actionBy };
+    // Include pausedBy information when game is paused
+    if (state === 'paused') {
+      payload.pausedBy = game.pausedBy;
+    }
+    this.io.to(game.roomId).emit('game-state', payload);
   }
 }
 

@@ -6,6 +6,7 @@
 const PLAYER_RADIUS = 25;
 const MOVE_SPEED = 4;
 const TAG_COOLDOWN_MS = 1000;
+const DASH_SCALE = 1.55;
 
 const PLAYER_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12'];
 
@@ -24,6 +25,7 @@ class Player {
     this.color = PLAYER_COLORS[colorIndex % PLAYER_COLORS.length];
     this.score = 0;
     this.lastTagTime = 0;
+    this.dash = false; // Whether player is currently dashing
 
     // Spawn in center-ish, spread slightly to avoid overlap
     const centerX = arenaSize.width / 2;
@@ -55,14 +57,16 @@ class Player {
   /**
    * Set movement direction (normalized -1 to 1). Server applies speed.
    */
-  setVelocity(x, y) {
+  setVelocity(x, y, dash = false) {
     let len = Math.sqrt(x * x + y * y);
     if (len > 1) {
       x /= len;
       y /= len;
     }
-    this.velocity.x = x * MOVE_SPEED;
-    this.velocity.y = y * MOVE_SPEED;
+    const speed = dash ? MOVE_SPEED * DASH_SCALE : MOVE_SPEED;
+    this.velocity.x = x * speed;
+    this.velocity.y = y * speed;
+    this.dash = dash;
   }
 
   /**
