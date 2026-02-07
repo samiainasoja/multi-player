@@ -12,7 +12,6 @@ const { GameManager } = require('./managers/GameManager');
 const { Game } = require('./game/Game');
 
 const PORT = process.env.PORT || 3000;
-// Serve merged frontend from workspace public/ (sibling to backend/)
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
@@ -66,6 +65,7 @@ io.on('connection', (socket) => {
         isHost: player.isHost,
         arenaSize: game.arenaSize,
         players: game.getPlayersList(),
+        orbs: game.getOrbsList(),
         state: game.state
       });
       gameManager.broadcastRoomUpdate(game);
@@ -86,6 +86,7 @@ io.on('connection', (socket) => {
       isHost: true,
       arenaSize: newGame.arenaSize,
       players: newGame.getPlayersList(),
+      orbs: newGame.getOrbsList(),
       state: newGame.state
     });
     callback ? callback(null, { roomCode: newRoomCode, isHost: true }) : null;
@@ -107,10 +108,11 @@ io.on('connection', (socket) => {
     const game = roomManager.getGameForSocket(socket.id);
     if (!game) return;
     const player = game.getPlayer(socket.id);
-    if (!player || !player.isHost) return;
+    if (!player) return;
 
     switch (action) {
       case 'start':
+        if (!player.isHost) return;
         if (game.start()) gameManager.broadcastRoomUpdate(game);
         break;
       case 'pause':
@@ -120,11 +122,37 @@ io.on('connection', (socket) => {
         if (game.resume()) gameManager.broadcastGameState(game, 'playing', socket.id);
         break;
       case 'quit':
+        if (!player.isHost) return;
         game.quit();
         gameManager.broadcastGameState(game, 'ended', socket.id);
         break;
       default:
         break;
+    }
+  });
+
+  socket.on('leave-game', () => {
+    const game = roomManager.getGameForSocket(socket.id);
+    if (!game) return;
+    const player = game.getPlayer(socket.id);
+    const left = roomManager.leaveRoom(socket.id);
+    if (!left) return;
+    socket.leave(game.roomId);
+    socket.emit('left-room');
+    if (player) {
+      socket.to(game.roomId).emit('system-message', {
+        message: `${player.name} left the match.`
+      });
+    }
+    socket.to(game.roomId).emit('room-update', {
+      players: game.getPlayersList(),
+      orbs: game.getOrbsList(),
+      state: game.state,
+      leftPlayerId: socket.id,
+      newHostId: left.newHostId
+    });
+    if (game.getPlayerCount() < 2 && game.state === 'playing') {
+      game.quit();
     }
   });
 

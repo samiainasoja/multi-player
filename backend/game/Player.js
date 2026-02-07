@@ -92,7 +92,15 @@ class Player {
    */
   recordTag(now = Date.now()) {
     this.lastTagTime = now;
-    this.score += 1;
+  }
+
+  /**
+   * Add score (can be negative if you validate before calling).
+   */
+  addScore(delta) {
+    if (!Number.isFinite(delta) || delta === 0) return;
+    this.score += delta;
+    if (this.score < 0) this.score = 0;
   }
 
   /**

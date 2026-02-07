@@ -23,6 +23,7 @@ class GameManager {
     game.onTick = (g) => {
       this.io.to(roomId).emit('game-update', {
         players: g.getPlayersList(),
+        orbs: g.getOrbsList(),
         timer: Math.max(0, Math.ceil(g.timerSec)),
         state: g.state
       });
@@ -58,12 +59,14 @@ class GameManager {
     if (game.state === 'playing' || game.state === 'paused') {
       this.io.to(roomId).emit('game-update', {
         players: game.getPlayersList(),
+        orbs: game.getOrbsList(),
         timer: Math.max(0, Math.ceil(game.timerSec)),
         state: game.state
       });
     } else {
       this.io.to(roomId).emit('room-update', {
         players: game.getPlayersList(),
+        orbs: game.getOrbsList(),
         state: game.state
       });
     }
