@@ -9,7 +9,6 @@ const express = require('express');
 const { Server } = require('socket.io');
 const { RoomManager } = require('./managers/RoomManager');
 const { GameManager } = require('./managers/GameManager');
-const { Game } = require('./game/Game');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');

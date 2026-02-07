@@ -2,8 +2,6 @@
  * GameManager - Wires game loop to Socket.io: tick broadcast, tag events, game end.
  */
 
-const { Game } = require('../game/Game');
-
 class GameManager {
   /**
    * @param {import('socket.io').Server} io

@@ -33,8 +33,6 @@ let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
 let ARENA_SCALE = 1;
 let ARENA_OFFSET = { x: 0, y: 0 };
-const PLAYER_SPEED = 396;
-const DASH_SCALE = 1.55;
 const MATCH_SECONDS = 5 * 60;
 const PLAYER_RADIUS = 27;
 
@@ -50,16 +48,6 @@ const KEY_MAP = {
   ShiftLeft: "dash",
   ShiftRight: "dash",
 };
-
-const COLORS = [
-  "#FF5F6D",
-  "#FFAA3B",
-  "#7C5CFF",
-  "#50FFC0",
-  "#26C6DA",
-  "#F5F7A6",
-];
-
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -331,7 +319,6 @@ class ArenaRenderer {
       const el = this.domNodes.get(player.id);
       el.dataset.leader = String(player.isLeader);
       el.dataset.tagState = player.isIt ? "it" : "safe";
-      el.dataset.streak = (player.streak ?? 0).toString();
       const initials = el.querySelector(".player-node__initial");
       const badge = el.querySelector(".player-node__badge");
       if (initials) initials.textContent = player.name[0]?.toUpperCase() ?? "?";
@@ -392,19 +379,16 @@ class ArenaRenderer {
   }
 }
 
-// BACKEND: DELETE - SandboxEngine is client-only simulation.
 class InterfaceController {
   constructor() {
     this.renderer = new ArenaRenderer(arenaFieldEl || arenaEl);
     this.audio = new AudioKit();
     this.socket = null;
-    this.streak = 0;
     this.activePlayers = [];
     this.timer = MATCH_SECONDS;
     this.status = "idle";
     this.feed = new EventFeed(eventFeedEl);
     this.miniMap = new MiniMapRenderer(miniMapCanvas);
-    this.netShim = null;
     this.touchStick = new TouchStick(touchStickEl, touchDashBtn);
     this.prefersCoarse = window.matchMedia
       ? window.matchMedia("(pointer: coarse)").matches
@@ -504,9 +488,6 @@ class InterfaceController {
       }
     });
 
-
-    // BACKEND: DELETE - latency slider is only for sandbox testing.
-
     motionToggle?.addEventListener("change", () => {
       document.body.classList.toggle("reduced-motion", motionToggle.checked);
     });
@@ -556,7 +537,6 @@ class InterfaceController {
       if (err?.message) this.#toast(err.message);
     });
   }
-
 
   #handleRoomJoined({ roomCode, playerId, isHost, arenaSize, players, orbs, state }) {
     this.localId = playerId;
@@ -699,9 +679,6 @@ class InterfaceController {
     this.#updateLeaderboard(players);
     timerLabel.textContent = formatClock(timer);
     this.#pushSnapshot({ players, orbs, localId });
-    const localPlayer = players.find((player) => player.id === localId);
-    const streakValue = localPlayer?.streak ?? 0;
-    this.streak = streakValue;
     if (statusLabel) {
       statusLabel.textContent = this.#statusText();
     }
@@ -807,18 +784,6 @@ class InterfaceController {
     setTimeout(() => pill.remove(), 2500);
   }
 
-  #handleTag({ from, to, streak, score }) {
-    this.#updateTagTicker({ from, to, score });
-    const addon = streak > 1 ? ` (${streak} streak)` : "";
-    this.#logEvent(`${from} → ${to}${addon}`);
-  }
-
-  #handleLobbyEvent({ type, name }) {
-    const verb = type === "join" ? "joined" : "left";
-    const emoji = type === "join" ? "+" : "−";
-    this.#logEvent(`${emoji} ${name} ${verb} the arena`);
-  }
-
   #logEvent(text) {
     this.feed.push(text);
   }
@@ -844,14 +809,6 @@ class InterfaceController {
     ticker.classList.add("tag-ticker--flash");
   }
 
-  #handleMatchEnd(players) {
-    this.status = "ended";
-    const winner = players[0];
-    if (winner) this.#toast(`${winner.name} takes the round`);
-    overlayEl.hidden = false;
-    startMatchBtn.disabled = false;
-    startMatchBtn.textContent = "Restart Match";
-  }
 }
 
 const controller = new InterfaceController();

@@ -78,23 +78,6 @@ body {
   margin-top: 0.35rem;
 }
 
-.control-range {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-}
-
-.control-range input {
-  accent-color: var(--accent);
-}
-
-.control-range output {
-  font-size: 0.9rem;
-  color: var(--ink-strong);
-}
-
 .control-toggle {
   display: flex;
   align-items: center;
@@ -134,7 +117,7 @@ body {
   line-height: 1.6;
 }
 
-.hud__leaderboard li.is-it {
+.hud__leaderboard li.is-tagger {
   color: var(--accent);
 }
 
@@ -657,5 +640,4 @@ button {
   .mini-map {
     display: none;
   }
-}
 }
