@@ -1,7 +1,7 @@
 {
-  "name": "multi-player-tag-backend",
+  "name": "flux-arena-backend",
   "version": "1.0.0",
-  "description": "Backend for real-time multiplayer tag game",
+  "description": "Backend for Flux Arena real-time multiplayer game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -26,7 +26,7 @@ const io = new Server(server, {
   pingTimeout: 5000
 });
 
-// Static files for frontend (partner will add files to public/)
+// Serve frontend static files
 app.use(express.static(PUBLIC_DIR));
 app.get('/', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));

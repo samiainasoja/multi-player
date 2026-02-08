@@ -2,7 +2,7 @@
 # See: https://render.com/docs/blueprint-spec
 services:
   - type: web
-    name: multi-player-tag-backend
+    name: flux-arena-backend
     runtime: node
     plan: free
     rootDir: backend

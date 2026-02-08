@@ -14,7 +14,6 @@ const pauseToggleBtn = $("#pauseToggle");
 const leaveMatchBtn = $("#leaveMatch");
 const messagesEl = $("#arenaMessages");
 const eventFeedEl = $("#eventFeed");
-const miniMapCanvas = $("#miniMap");
 const touchStickEl = $("#touchStick");
 const touchDashBtn = $("#touchDash");
 const roomDisplay = $("#roomDisplay");
@@ -184,29 +183,6 @@ class EventFeed {
   }
 }
 
-class MiniMapRenderer {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas ? canvas.getContext("2d") : null;
-  }
-
-  draw(players, localId) {
-    if (!this.ctx || !this.canvas) return;
-    const { width, height } = this.canvas;
-    this.ctx.clearRect(0, 0, width, height);
-    this.ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-    this.ctx.fillRect(0, 0, width, height);
-    players.forEach((player) => {
-      const px = (player.position.x / ARENA_SIZE.width) * width;
-      const py = (player.position.y / ARENA_SIZE.height) * height;
-      this.ctx.fillStyle = player.color;
-      this.ctx.beginPath();
-      this.ctx.arc(px, py, player.id === localId ? 5 : 3.5, 0, Math.PI * 2);
-      this.ctx.fill();
-    });
-  }
-}
-
 class TouchStick {
   constructor(root, dashButton) {
     this.root = root;
@@ -301,6 +277,11 @@ class ArenaRenderer {
   }
 
   sync(players, localId) {
+    // Determine the leading scorer for visual highlight
+    const maxScore = Math.max(...players.map((p) => p.score), 0);
+    const leaderId =
+      maxScore > 0 ? players.find((p) => p.score === maxScore)?.id : null;
+
     players.forEach((player) => {
       if (!this.domNodes.has(player.id)) {
         const node = document.createElement("div");
@@ -315,7 +296,7 @@ class ArenaRenderer {
         this.domNodes.set(player.id, node);
       }
       const el = this.domNodes.get(player.id);
-      el.dataset.leader = String(player.isLeader);
+      el.dataset.leader = String(player.id === leaderId);
       const initials = el.querySelector(".player-node__initial");
       const badge = el.querySelector(".player-node__badge");
       if (initials) initials.textContent = player.name[0]?.toUpperCase() ?? "?";
@@ -339,10 +320,6 @@ class ArenaRenderer {
 
     this.camera.x = 0;
     this.camera.y = 0;
-  }
-
-  resetCamera() {
-    this.camera = { x: 0, y: 0 };
   }
 
   syncOrbs(orbs) {
@@ -394,7 +371,6 @@ class InterfaceController {
     this.timer = MATCH_SECONDS;
     this.status = "idle";
     this.feed = new EventFeed(eventFeedEl);
-    this.miniMap = new MiniMapRenderer(miniMapCanvas);
     this.touchStick = new TouchStick(touchStickEl, touchDashBtn);
     this.prefersCoarse = window.matchMedia
       ? window.matchMedia("(pointer: coarse)").matches
@@ -601,6 +577,7 @@ class InterfaceController {
       if (pauseOverlay) {
         pauseOverlay.hidden = false;
         const name = this.#getPlayerName(actionBy);
+        if (name) this.#logEvent(`${name} paused the game`);
         if (pausedByLabel) {
           pausedByLabel.textContent = name ? `Paused by ${name}` : "Paused";
         }
@@ -613,6 +590,8 @@ class InterfaceController {
       }
     }
     if (state === "playing") {
+      const resumedName = this.#getPlayerName(actionBy);
+      if (resumedName) this.#logEvent(`${resumedName} resumed the game`);
       this.pausedBy = null; // Clear pausedBy when game resumes
       pauseToggleBtn.setAttribute("aria-pressed", "false");
       pauseToggleBtn.textContent = "Pause";
@@ -620,7 +599,18 @@ class InterfaceController {
       if (pauseOverlay) pauseOverlay.hidden = true;
       if (winOverlay) winOverlay.hidden = true;
     }
-    if (state === "ended") overlayEl.hidden = true;
+    if (state === "ended") {
+      const quitName = this.#getPlayerName(actionBy);
+      if (quitName) {
+        this.#logEvent(`${quitName} quit the game`);
+        // Update the win screen subtitle so the message is visible
+        // (the win overlay covers the event feed at z-index 100)
+        if (winOverlay && !winOverlay.hidden && winSubtitle) {
+          winSubtitle.textContent = `${quitName} quit the game`;
+        }
+      }
+      overlayEl.hidden = true;
+    }
     if (statusLabel) statusLabel.textContent = this.#statusText(state);
   }
 
@@ -748,7 +738,6 @@ class InterfaceController {
     const activeLocalId = newer.localId ?? older.localId;
     this.renderer.sync(interpolatedPlayers, activeLocalId);
     this.renderer.syncOrbs(newer.orbs ?? older.orbs ?? []);
-    this.miniMap.draw(interpolatedPlayers, activeLocalId);
   }
 
   #getSnapshots(renderTime) {

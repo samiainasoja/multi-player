@@ -1,10 +1,10 @@
-# Flux Tag Arena
+# Flux Arena
 
-A real-time multiplayer tag game built with Node.js, Express, and Socket.io.
+A real-time multiplayer arena game built with Node.js, Express, and Socket.io.
 
 ## Overview
 
-Flux Tag Arena is a browser-based multiplayer arena game where players compete in fast-paced rounds of tag. One player starts as "it" and must tag others while being chased by teammates. Players earn points by collecting orbs scattered across the arena.
+Flux Arena is a browser-based multiplayer arena game where 2-4 players compete in real-time to collect orbs scattered across the arena. Collect blue orbs for points, avoid red obstacles that subtract points, and chase the rare golden orb worth 50 points. The player with the highest score when the timer runs out wins.
 
 ## Features
 
@@ -19,7 +19,7 @@ Flux Tag Arena is a browser-based multiplayer arena game where players compete i
 ## Tech Stack
 
 - **Backend**: Node.js, Express, Socket.io
-- **Frontend**: Vanilla JavaScript, HTML5 Canvas
+- **Frontend**: Vanilla JavaScript, HTML5, CSS3
 - **Game Loop**: 60 FPS server tick + client-side interpolation
 
 ## Getting Started
@@ -58,10 +58,9 @@ The server will start on `http://localhost:3000`
 │   ├── managers/             # Room & game management
 │   │   ├── RoomManager.js   # Room creation & joining
 │   │   └── GameManager.js   # Game loop & broadcasting
-│   ├── public/               # Static files (served from backend)
 │   ├── server.js            # Express & Socket.io setup
 │   └── package.json
-├── public/                   # Frontend assets (symlink or copy)
+├── public/                   # Frontend assets (served by Express)
 │   ├── index.html
 │   ├── scripts/
 │   │   └── main.js          # Client logic & rendering
@@ -77,19 +76,21 @@ The server will start on `http://localhost:3000`
 3. **Gameplay**: 
    - Move with WASD or Arrow keys
    - Dash with Shift
-   - Avoid being tagged by the player who is "it"
-   - Collect orbs for points
-   - Last player standing or highest score wins
-4. **Scoring**: Collect orbs worth 1, 3, 5, or 10 points
+   - Collect blue orbs for points (+1, +3, +5, +10)
+   - Avoid red obstacles (-3, -5, -8)
+   - Chase the rare golden orb for +50 points
+   - Highest score when the timer runs out wins
+4. **Scoring**: Blue orbs give points, red obstacles subtract points, golden orbs are rare and worth 50 points
 
 ## Game Constants
 
 - **Arena Size**: 1200×720 pixels
-- **Match Duration**: 5 minutes
+- **Match Duration**: 2 minutes
 - **Max Players**: 4 per room
+- **Min Players**: 2 per room
 - **Server Tick Rate**: 60 FPS
 - **Player Speed**: 4 pixels/tick
-- **Tag Cooldown**: 1 second
+- **Dash Speed**: 6.2 pixels/tick (1.55x multiplier)
 
 ## Development
 

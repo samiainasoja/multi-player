@@ -1,6 +1,6 @@
-# Multi-Player Tag — Backend
+# Flux Arena — Backend
 
-Node.js + Express + Socket.io backend for a real-time arena tag game (2–4 players, 5-minute rounds).
+Node.js + Express + Socket.io backend for a real-time arena game (2-4 players, 2-minute rounds).
 
 ## Setup
 
@@ -18,13 +18,12 @@ Runs on `http://localhost:3000` (or `PORT` from env).
 backend/
 ├── server.js           # Express + Socket.io, event handlers
 ├── game/
-│   ├── Game.js         # Room state, 60 FPS loop, timer
+│   ├── Game.js         # Room state, 60 FPS loop, timer, orb spawning
 │   ├── Player.js       # Player state, movement, scoring
-│   └── Collision.js    # Distance-based tag detection
+│   └── Collision.js    # Distance-based collision detection
 ├── managers/
 │   ├── RoomManager.js  # Room codes, create/join, max 4 players
 │   └── GameManager.js  # Game loop → Socket.io broadcasts
-└── public/             # Static frontend (partner adds files)
 ```
 
 ## Socket.io Events
@@ -34,27 +33,29 @@ backend/
 | Event          | Payload                         | Notes                    |
 |----------------|----------------------------------|--------------------------|
 | `join-room`    | `{ playerName, roomCode? }`      | No code = create (host)  |
-| `player-move`  | `{ x, y }`                       | Normalized direction -1..1 |
-| `game-action`  | `{ action: 'start'\|'pause'\|'resume'\|'quit' }` | Host only |
+| `player-move`  | `{ x, y, dash }`                | Normalized direction -1..1 |
+| `game-action`  | `{ action: 'start'\|'pause'\|'resume'\|'quit' }` | start = host only; pause/quit = any player |
+| `leave-game`   | —                                | Player leaves the room   |
 | `chat-message` | `{ message }`                    | Broadcast to room        |
 
 **Server → Client**
 
 | Event          | Payload / purpose                          |
 |----------------|--------------------------------------------|
-| `room-joined`  | `{ roomCode, playerId, isHost, arenaSize, players?, state? }` |
-| `room-update`  | `{ players, state, leftPlayerId?, newHostId? }` |
-| `game-update`  | `{ players, timer, state }`                |
-| `tag-event`    | `{ taggerId, taggedId, taggerName, taggedName, scores }` |
-| `game-state`   | `{ state, actionBy }`                      |
+| `room-joined`  | `{ roomCode, playerId, isHost, arenaSize, players, orbs, state }` |
+| `room-update`  | `{ players, orbs, state, leftPlayerId?, newHostId? }` |
+| `game-update`  | `{ players, orbs, timer, state }`          |
+| `game-state`   | `{ state, actionBy, pausedBy? }`           |
 | `game-ended`   | `{ winner, finalScores }`                  |
+| `system-message` | `{ message }`                            |
 | `chat-message` | `{ playerName, message }`                  |
 
 ## Game Rules
 
-- Arena: 800×600 px. Player radius: 25 px.
-- Tag = distance &lt; 50 px; 1 s cooldown per tagger.
-- 5-minute countdown; highest score wins.
+- Arena: 1200x720 px. Player radius: 25 px.
+- Collect blue orbs (+1, +3, +5, +10), avoid red obstacles (-3, -5, -8), chase golden orbs (+50).
+- 2-minute countdown; highest score wins.
+- Orbs spawn every 4 seconds (4 point orbs, 2 obstacles, 20% chance of golden orb).
 
 ## Environment
 
@@ -65,4 +66,4 @@ backend/
 
 ## Deployment
 
-Set `PORT` (and optionally `CORS_ORIGIN`) and run `npm start`. Works on Render, Railway, etc.
+Set `PORT` (and optionally `CORS_ORIGIN`) and run `npm start`. Works on Render, Railway, etc. A `render.yaml` blueprint is included in the project root.
