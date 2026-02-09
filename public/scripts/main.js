@@ -30,6 +30,7 @@ const winTitle = $("#winTitle");
 const winSubtitle = $("#winSubtitle");
 const winScoresList = $("#winScoresList");
 const winBackBtn = $("#winBackBtn");
+const joinErrorEl = $("#joinError");
 
 let ARENA_SIZE = { width: 1100, height: 640 };
 let VIEWPORT_SIZE = { width: 0, height: 0 };
@@ -402,6 +403,9 @@ class InterfaceController {
       this.#joinRoom();
     });
 
+    playerNameInput?.addEventListener("input", () => this.#clearJoinError());
+    roomInput?.addEventListener("input", () => this.#clearJoinError());
+
     createLobbyBtn.addEventListener("click", () => {
       this.audio.prime();
       syncArenaSize();
@@ -474,6 +478,7 @@ class InterfaceController {
       startMatchBtn.disabled = !this.isHost;
       startMatchBtn.textContent = this.isHost ? "Restart Match" : "Waiting for host";
       this.#updateLobbyList(this.activePlayers);
+      this.#clearJoinError();
     });
 
     if (this.prefersCoarse) {
@@ -508,7 +513,8 @@ class InterfaceController {
     const playerName = playerNameInput.value.trim() || "Pilot";
     const roomCode = roomInput.value.trim() || undefined;
     socket.emit("join-room", { playerName, roomCode }, (err) => {
-      if (err?.message) this.#toast(err.message);
+      if (err?.message) this.#showJoinError(err.message);
+      else this.#clearJoinError();
     });
   }
 
@@ -517,7 +523,8 @@ class InterfaceController {
     if (!socket) return;
     const playerName = playerNameInput.value.trim() || "Pilot";
     socket.emit("join-room", { playerName, roomCode: undefined }, (err) => {
-      if (err?.message) this.#toast(err.message);
+      if (err?.message) this.#showJoinError(err.message);
+      else this.#clearJoinError();
     });
   }
 
@@ -535,6 +542,7 @@ class InterfaceController {
     overlayEl.hidden = state === "playing";
     if (pauseOverlay) pauseOverlay.hidden = true;
     if (winOverlay) winOverlay.hidden = true;
+    this.#clearJoinError();
     this.touchStick.setInput(this.input);
     this.#startInputLoop();
     this.#applyState({ players: players ?? [], orbs: orbs ?? [], timer: this.timer, localId: this.localId });
@@ -797,6 +805,18 @@ class InterfaceController {
     pill.textContent = text;
     messagesEl.appendChild(pill);
     setTimeout(() => pill.remove(), 2500);
+  }
+
+  #showJoinError(text) {
+    if (!joinErrorEl) return;
+    joinErrorEl.textContent = text;
+    joinErrorEl.hidden = false;
+  }
+
+  #clearJoinError() {
+    if (!joinErrorEl) return;
+    joinErrorEl.hidden = true;
+    joinErrorEl.textContent = "";
   }
 
   #logEvent(text) {

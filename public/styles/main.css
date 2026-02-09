@@ -544,6 +544,16 @@ button {
   gap: 0.75rem;
 }
 
+.overlay__error {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(231, 76, 60, 0.15);
+  border: 1px solid rgba(231, 76, 60, 0.45);
+  color: #ffdede;
+  font-size: 0.9rem;
+}
+
 .overlay__footer {
   display: flex;
   flex-direction: column;
